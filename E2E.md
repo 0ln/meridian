@@ -392,6 +392,40 @@ an actual loaded-Linux-host timeout reproduction**. Stock Node controls also
 cover the aggregate Git budget, TERM resistance, detached/stale launcher facts
 and failed status. [Source mappings, sanitized proof and limits](docs/maintenance/evidence/1330-source-build-identity.md).
 
+## Startup warning under Bun (E87)
+
+**What it proves:** a proxy started under Bun says at startup that it cannot
+stop a request whose client goes away before the first byte of the response,
+and how to run it so it can. A proxy under Node says nothing.
+
+Under Bun, the `node:http` server that @hono/node-server serves with is never
+told of a client that goes away before the response's first byte: neither the
+socket nor the response emits `close` or turns `destroyed`, a 0-byte socket
+write succeeds, and headers flushed early only surface the loss at the next
+write. The request's abort signal never fires, so a request cancelled while the
+model is still thinking (Esc in Claude Code, an orchestrator stopping subagents
+still starting) runs on to the end of its turn, on the account's allowance.
+Under Node it stops. Serving with `Bun.serve` instead would change the `server`
+that `startProxyServer` hands to its callers, so this change only warns:
+`runtimeCancelWarning.ts` prints one `console.warn` line after the startup
+banner when `process.versions.bun` is set, naming the Bun version and
+`npm run build && npm run start` as the way out. The supervisor already runs
+the build under Node and uses the source under Bun only when there is no build.
+
+**Unit coverage:** `runtime-cancel-warning.test.ts` (the warning names the Bun
+version, the cost and the remedy; it is absent under Node).
+
+**Source evidence (not re-run here):** the contributor probed the missed
+disconnect on 2026-10-06 on macOS with Bun 1.3.14 and Claude CLI
+2.1.284–2.1.294, through a client-cancel gate that is not part of this change:
+under Bun no routing mode stopped the SDK child when the client went before the
+first byte, while the built proxy under Node with manual routing closed the SDK
+child's API request about 1.5 s after the client went.
+
+**Not covered:** the underlying cancellation under Bun is not fixed; the
+warning only reports it. No Linux or Windows run of the probe exists, and the
+warning's text was checked by unit test, not by starting a proxy here.
+
 ## Antigravity subscription CLI backend
 
 ```sh
