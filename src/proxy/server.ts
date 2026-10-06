@@ -205,6 +205,7 @@ import { getConversationFingerprint, getPriorityAssignmentKey } from "./session/
 
 import {
   lookupSession,
+  newestCopyElsewhere,
   storeSession,
   rollbackPrioritySessionPublication,
   finalizePrioritySessionPublication,
@@ -3118,6 +3119,29 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         // prevent leaking the old session's conversation history.
         if (lineageResult.type === "undo" && adapterBase === "opencode" && !agentSessionId) {
           lineageResult = { type: "diverged", reason: "missing-session-header" }
+        }
+        // A copy of this conversation on another account, used since the one
+        // here and still holding this history: copies are kept per account
+        // and outlive a move, so the one here can be older than the
+        // conversation (newestCopyElsewhere).
+        const ownCopy = durableMappingAtTurn.status === "found" ? durableMappingAtTurn.session : undefined
+        const elsewhere = agentSessionId && profileSessionId && !isIndependentSession
+          ? newestCopyElsewhere(
+              getEffectiveProfiles(finalConfig.profiles)
+                .filter(other => other.id !== profile.id)
+                .map(other => other.id !== "default" ? `${other.id}:${agentSessionId}` : agentSessionId),
+              lineageMessages,
+              ownCopy?.lastUsedAt ?? 0,
+            )
+          : undefined
+        // A conversation that comes back to this account after turns on
+        // another finds the copy it left here: a session that ends where the
+        // conversation was then. Resumed, it would be sent the turns taken
+        // elsewhere as a delta, which keeps only the user's side of them, so
+        // the model would answer without the replies it gave there.
+        if (lineageResult.type !== "diverged" && ownCopy && elsewhere) {
+          diagnosticLog.lineage(`${requestMeta.requestId} the copy of this conversation on ${profile.id} is older than the one on ${elsewhere.key.slice(0, Math.max(0, elsewhere.key.indexOf(":"))) || "the default account"}: it took turns there since.`)
+          lineageResult = { type: "diverged", reason: "moved-on-elsewhere" }
         }
         // Clients that declare a concurrent flow (a fork source or either
         // subagent signal) knowingly run parallel turns under one session key — see
