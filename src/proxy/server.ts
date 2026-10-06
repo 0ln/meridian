@@ -3128,13 +3128,21 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         // this history than the one here, which would be resumed or which is
         // missing: copies are kept per account and outlive a move, so the one
         // here can be behind the conversation (copyElsewhereHoldingMore).
+        // Kept under its session key, or, for a client that sends none, its
+        // fingerprint, scoped to each account as this account's is above.
         const ownCopy = durableMappingAtTurn.status === "found" ? durableMappingAtTurn.session : undefined
-        const elsewhere = agentSessionId && profileSessionId && !isIndependentSession
+        const keyOn = (profileId: string): string | undefined => agentSessionId
+          ? mappingKeyOn(profileId, agentSessionId)
+          : getConversationFingerprint(lineageMessages, profileId !== "default" ? `${clientWorkingDirectory}::profile=${profileId}` : clientWorkingDirectory)
+        const elsewhere = durableMappingKey && !isIndependentSession
           && (lineageResult.type !== "diverged" || lineageResult.reason === "not-found")
           ? copyElsewhereHoldingMore(
               getEffectiveProfiles(finalConfig.profiles)
                 .filter(other => other.id !== profile.id)
-                .map(other => ({ profileId: other.id, key: mappingKeyOn(other.id, agentSessionId) })),
+                .flatMap(other => {
+                  const key = keyOn(other.id)
+                  return key ? [{ profileId: other.id, key }] : []
+                }),
               lineageMessages,
               { lastUsedAt: ownCopy?.lastUsedAt ?? 0, held: messagesHeld(lineageResult, lineageMessages) },
             )
