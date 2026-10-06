@@ -64,6 +64,40 @@ Windows uses a separate wrapper/cancellation contract; these POSIX fixtures
 explicitly skip it. See [durable proof, receipts, baseline reproduction and
 limits](docs/maintenance/evidence/sdk-process-close-join.md).
 
+## SDK wrapper process probe off the event loop (E84)
+
+**What it proves:** a request that opens its SDK process gate captures the
+wrapper's process incarnation without holding every other request while the
+probe runs, and a loaded host no longer fails that request after 2 s.
+
+The SDK gate captures each request's wrapper process before the SDK command
+opens. On macOS and Windows that capture is a child process (`ps -o lstart=` or
+PowerShell). Run synchronously it held the event loop for every other streaming
+request, and under heavy load it outran its 2 s timeout, so the request failed
+before any Messages call with `cannot capture SDK writer process incarnation`.
+`createSdkProcessGate` now awaits `captureProcessIncarnationAsync`, which runs
+the same probe with `execFile` and a 10 s timeout and returns the same identity
+as the synchronous capture. Linux still reads `/proc` directly.
+
+**Unit coverage:** `process-incarnation.test.ts` (the async capture matches the
+synchronous one without calling `spawnSync`, and captures nothing of an exited
+process) and `sdk-process-gate.test.ts` (the gate captures its wrapper without
+calling `spawnSync`).
+
+**Source evidence (not re-run here):** recorded on the contributor's fork on
+macOS with Claude CLI 2.1.284–2.1.294, through a parallel background-subagent
+gate that is not part of this change, on a scripted API with no model calls.
+
+- Before: 12 subagents at a load average near 40 on 10 cores, 12 runs. In 5,
+  one request failed before any Messages call with `cannot capture SDK writer
+  process incarnation`, the 2 s `ps` probe of a new SDK child timing out.
+- After: 4 subagents at a load average near 11: PASS, 28 of 28 requests
+  dispatched, no replay. Not repeated at a load near 40.
+
+**Not covered:** a probe that outlasts 10 s at a load near 40 still fails its
+request before any Messages call, and the client asks again. These runs were
+not repeated for this branch, and no Windows run exists.
+
 ## Shared header separator hover (#1262)
 
 Run `E2E_HEADER_PORT=42231 bun scripts/e2e-build-header-fixture.ts` and use the
