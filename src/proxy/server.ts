@@ -205,7 +205,8 @@ import { getConversationFingerprint, getPriorityAssignmentKey } from "./session/
 
 import {
   lookupSession,
-  newestCopyElsewhere,
+  copyElsewhereHoldingMore,
+  messagesHeld,
   storeSession,
   rollbackPrioritySessionPublication,
   finalizePrioritySessionPublication,
@@ -3120,18 +3121,19 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         if (lineageResult.type === "undo" && adapterBase === "opencode" && !agentSessionId) {
           lineageResult = { type: "diverged", reason: "missing-session-header" }
         }
-        // A copy of this conversation on another account, used since the one
-        // here and still holding this history: copies are kept per account
-        // and outlive a move, so the one here can be older than the
-        // conversation (newestCopyElsewhere).
+        // A copy of this conversation on another account holding more of
+        // this history than the one here, which would be resumed or which is
+        // missing: copies are kept per account and outlive a move, so the one
+        // here can be behind the conversation (copyElsewhereHoldingMore).
         const ownCopy = durableMappingAtTurn.status === "found" ? durableMappingAtTurn.session : undefined
         const elsewhere = agentSessionId && profileSessionId && !isIndependentSession
-          ? newestCopyElsewhere(
+          && (lineageResult.type !== "diverged" || lineageResult.reason === "not-found")
+          ? copyElsewhereHoldingMore(
               getEffectiveProfiles(finalConfig.profiles)
                 .filter(other => other.id !== profile.id)
-                .map(other => other.id !== "default" ? `${other.id}:${agentSessionId}` : agentSessionId),
+                .map(other => ({ profileId: other.id, key: other.id !== "default" ? `${other.id}:${agentSessionId}` : agentSessionId })),
               lineageMessages,
-              ownCopy?.lastUsedAt ?? 0,
+              { lastUsedAt: ownCopy?.lastUsedAt ?? 0, held: messagesHeld(lineageResult, lineageMessages) },
             )
           : undefined
         // A conversation that comes back to this account after turns on
@@ -3140,7 +3142,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         // elsewhere as a delta, which keeps only the user's side of them, so
         // the model would answer without the replies it gave there.
         if (lineageResult.type !== "diverged" && ownCopy && elsewhere) {
-          diagnosticLog.lineage(`${requestMeta.requestId} the copy of this conversation on ${profile.id} is older than the one on ${elsewhere.key.slice(0, Math.max(0, elsewhere.key.indexOf(":"))) || "the default account"}: it took turns there since.`)
+          diagnosticLog.lineage(`${requestMeta.requestId} the copy of this conversation on ${profile.id} holds less of it than the one on ${elsewhere.profileId}: it took turns there since.`)
           lineageResult = { type: "diverged", reason: "moved-on-elsewhere" }
         }
         // Clients that declare a concurrent flow (a fork source or either

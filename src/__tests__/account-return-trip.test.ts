@@ -22,6 +22,8 @@ import { assistantMessage, resolveMockSdkSessionId } from "./helpers"
 interface SeenQuery {
   dir: string
   resume: string | undefined
+  /** The session the turn is written to. */
+  target: string
   prompt: string
 }
 let seen: SeenQuery[] = []
@@ -39,7 +41,7 @@ installSdkMock(() => ({
     const sessionId = resolveMockSdkSessionId(params.options, "return-trip-session")
     return (async function* () {
       const prompt = await promptText(params.prompt)
-      seen.push({ dir, resume: params.options?.resume, prompt })
+      seen.push({ dir, resume: params.options?.resume, target: sessionId, prompt })
       yield { ...assistantMessage([{ type: "text", text: `answer from ${dir}` }]), session_id: sessionId }
     })()
   },
@@ -152,5 +154,34 @@ describe("a conversation that moves to another account and comes back", () => {
     expect({ resumedStale, prompt: back.prompt }).toEqual({ resumedStale: false, prompt: expect.stringContaining("FOURTH-QUESTION") })
     expect(back.prompt).toContain("BACKUP-ANSWER-2")
     expect(back.prompt).toContain("BACKUP-ANSWER-3")
+  })
+
+  it("resumes its own session when the user rewinds, after a move and back, to a point it holds", async () => {
+    const app = createApp()
+    await setActive(app, "work")
+    await turn(app, "rt-rewind", [{ role: "user", content: "FIRST-QUESTION" }])
+    const workSession = seen.at(-1)!.target
+    await setActive(app, "backup")
+    await turn(app, "rt-rewind", [
+      { role: "user", content: "FIRST-QUESTION" }, { role: "assistant", content: "WORK-ANSWER-1" },
+      { role: "user", content: "SECOND-QUESTION" },
+    ])
+    await turn(app, "rt-rewind", [
+      { role: "user", content: "FIRST-QUESTION" }, { role: "assistant", content: "WORK-ANSWER-1" },
+      { role: "user", content: "SECOND-QUESTION" }, { role: "assistant", content: "BACKUP-ANSWER-2" },
+      { role: "user", content: "THIRD-QUESTION" },
+    ])
+    // Back on `work`, the user edits the second question. What is left of
+    // the history before it was all written on `work`, and `backup`'s
+    // copy, gone further, holds no more of it.
+    await setActive(app, "work")
+    await turn(app, "rt-rewind", [
+      { role: "user", content: "FIRST-QUESTION" }, { role: "assistant", content: "WORK-ANSWER-1" },
+      { role: "user", content: "SECOND-QUESTION-EDITED" },
+    ])
+    const back = seen.at(-1)!
+    expect(back.dir).toContain("work")
+    expect({ resume: back.resume, replayed: back.prompt.includes("<conversation_history>") }).toEqual({ resume: workSession, replayed: false })
+    expect(back.prompt).toContain("SECOND-QUESTION-EDITED")
   })
 })
