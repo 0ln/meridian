@@ -1,4 +1,101 @@
-## Current oldest-first continuation — 2026-10-11
+## Core-fix priority continuation — 2026-10-12
+
+The current owner order supersedes the older oldest-first instructions below:
+**core fixes, then potential fixes, then features**, with Haiku 5.5 explicitly
+prioritized. Fresh discovery finds the same six managed repositories. Preserve
+specific owner deferrals and contributor no-review requests.
+
+Haiku #1337 was not deployed because the delivery remained draft over missing
+macOS Nix installed-native/SDK proof; no release was started. npm latest is
+1.80.0. Contrary to the old PR checkpoint, final-head test and platform builds
+at `34156cfb` passed. The missing runtime proof can run in the existing macOS Nix
+CI runner without installing Nix on the owner's host. The added launcher runs
+the existing ten-case installed HTTP/SDK/native harness with isolated loopback API configuration, original SDK process/pipe joins,
+and Darwin executable observation.
+The negative external-network control returns EPERM locally. CI must still
+execute this exact installed tuple; no passing runtime result is claimed yet.
+The first CI attempt built the package but failed before cases: the Linux
+harness required `sleep` beside `/usr/bin/env`; macOS provides `/bin/sleep`.
+The corrected preflight resolves it through the actual sanitized PATH. Preserve
+[the original failed report](https://github.com/rynfar/meridian/actions/runs/38273029599/artifacts/11757534275);
+this was a harness prerequisite failure, not an SDK/model result.
+The second attempt reached the installed native/SDK versions but all HTTP
+cases returned 500 before SDK admission: macOS sandbox-exec refuses the setuid
+`/bin/ps` used by production incarnation checks. This is locally reproducible
+with sandbox-exec alone, independent of Meridian. The disposable macOS runner
+now uses cleared env, isolated config and dummy loopback API credentials without
+an OS-wide fence. Production synchronous identity probes are recorded with
+status/signal/error and output hashes; successful Node spawnSync completion is
+kept distinct from asynchronous SDK process/pipe joins. Unknown/failed sync
+probes still fail the gate. Neither change modifies production identity checks.
+Product code is unchanged. Existing real Pi/source and independent-pack evidence
+retains its original scope and failures. No release or community message has
+been sent. Current isolated worktree is
+`/Users/rynfar/repos/meridian-core-fixes-20261012`; owner's dirty checkout and
+other agents' worktrees remain untouched.
+
+## Owner-priority Haiku 5.5 release — 2026-10-11
+
+The owner subsequently requested Haiku 5.5 support ASAP and a release. That
+supersedes the earlier **no-release authorization** snapshot below for this
+bounded release only; it does not waive backlog holds, actual-model/client,
+physical custody, package or CI gates. Work is isolated on `codex/haiku-55-release`
+from main `e68b9bcadd`, without any unfinished preparations folded in.
+
+[Implementation, discriminating controls and remaining gates](evidence/haiku55-support.md)
+cover the new pin/discovery/native 1M replay capacity, tier-aware estimates,
+legacy-pin persistence and native CLI minimum. Independent review's disabled/
+omitted control and legacy-price findings were corrected. Credentialless native
+helper/SDK wire controls pass. The initial Pi attempt received a weekly
+rate-limit refusal; its Bun observer/private fixtures/grant remain unqualified
+and retained. After the reset, read-only default-store availability was weekly
+0%, five-hour 3%, Extra Usage disabled. No parent refresh/account/paid change
+occurred. A native-Node attempt exposed a missing documented Pi header; its
+negative receipt was preserved, the fixture corrected and independently reviewed.
+**Actual Pi and independently npm-pack-installed read-back now both pass**:
+Pi 1.1.0, Node 24.20.0, CLI 2.1.296, SDK 0.2.141, Darwin ARM64, exact owned read,
+200 Pi/pin metadata, public native Haiku 5.5 history, original gates/both pipes
+joined. [New actual-flow evidence and remaining gates](evidence/haiku55-live-20261011/README.md)
+qualify only these flows, not the original negative or registry/publication.
+
+Draft delivery #1337 remains held. At exact head `cb42827e`, `test` passed but
+Nix evaluation/package checks failed because the pinned nixpkgs/native fallback
+outpaced the raised CLI floor. The generated nixpkgs-only lock correction has
+actual before-fail/after-pass evaluation on three package targets and the Home
+Manager check; independent round 4 found no material lock defect. This is not
+build or model acceptance. Subsequently, exact head `34bcb028` passed latest
+`test`, Linux/macOS Nix builds, rendered Home Manager and other relevant checks.
+The cancelled same-head push Home Manager run was superseded by the successful
+PR run under declared concurrency; raw GitHub draft/UNSTABLE state is preserved.
+[Exact-head CI receipt](evidence/haiku55-final-head-ci-20261011.json) still needs
+rechecking after final evidence integration. [Actual installed Nix Linux ARM64](evidence/haiku55-nix-installed-20261011/README.md)
+built the exact archive and passed 10 credentialless cases with selected CLI
+2.1.295, Node 22.23.3, SDK 0.2.141, nine original close/both-pipe witnesses.
+Independent R5 found no material bounded evidence issue; full SSE conformance,
+universal subprocess faults, legacy snake-case budget preservation and Nix
+macOS installed-native execution remain explicitly unqualified.
+No floor reduction, broken-package bypass, paid usage, parent auth refresh or
+release has occurred. Final review/CI/guarded merge and release/registry gates remain.
+
+Preserved separately, never part of this release: #1310 at remote `b0884cd3`
+(no delivery PR yet), held #1334, scrub/#1214/Antigravity preparations, and SQLite
+custody WIP at `/Users/rynfar/repos/meridian-claude-sidecalls-stack-1292-20261008`
+(HEAD unchanged `964e2d18`). The custody child finished 34 native worker controls
+and 23 focused journal/custody tests, but its full suite had **52 failures**.
+Its `docs/maintenance/evidence/sqlite1219-native-custody-20261011/` records the
+original seven-file WIP escrow, new native changes and remaining gates; do not
+blindly commit, treat those failures as the former three, or approve the feature.
+Fresh independent custody review found two material admission gaps (ordinary
+preflight before atomic reservation, and memory ATTACH/backup disk lifetimes).
+A bounded immutable snapshot correction passes native getter controls, with
+further structural own-property correction and pure before/after coverage under
+review. Recovery diagnostics/corruption classification pass 72 focused controls;
+all three genuine recovery flows still fail. Nonmutating committed-WAL authority
+is a concrete native prerequisite, not permission for a writable fallback.
+Admission corrections are in progress in that separate preserved worktree;
+fixture setup corrections remain unexecuted pending its serialized native build.
+
+## Current oldest-first continuation — 2026-10-11 (earlier snapshot)
 
 Remaining newer-slice read-only triage refreshed 24 named items beyond #1261:
 20 open non-draft/non-release items and four excluded drafts. No item was
