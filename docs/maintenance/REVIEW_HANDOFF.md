@@ -1,3 +1,49 @@
+## Current #1356 acceptance — full local and actual source/package pass
+
+Delivery [#1356](https://github.com/rynfar/meridian/pull/1356) incorporates
+source #1341 (8e7b40cbde70481e7838d9bc5a8d8775dfce0a67) through authored
+d4590e9b3, preserving Cd1s's identity/date, with separate compatibility
+correction3140ccbd. Full local original59007 exited0 on frozen0b080b02:
+5752 pass / 35 skip / 0 fail in23 isolated groups, typecheck/build pass.
+
+Actual Pi1.1.0 + matching Antigravity retry plugin + official agy1.2.7 +
+Gemini3.8FlashLow/DarwinARM64 reproduces baseline failure and passes corrected
+source and independently installed package, including the bundled client
+plugin. The measured pause is between tool and idle deadlines; same native
+conversation continues, then expires beyond the configured idle window.
+All original processes/pipes join, paid credits remain disabled and the
+native executable hash is unchanged. No model process remains active.
+
+Original15301 baseline exit1,50314 source exit0,70924 installed exit0.
+Initial53395/30143 failures are retained: the initial harness inserted blocking
+native readiness checks into an unmeasured pause. The corrected harness measures
+the complete interval without those calls. No product change or unexplained
+rerun. [Durable evidence](evidence/1341-idle-window-20261012.md) and runnable
+`scripts/e2e-antigravity-idle-conversation.mjs` are committed. Final-head CI and
+exact-head merge with verified Cd1s coauthor credit remain. Recheck source head
+before closing #1341; #1073/#1325 remain open. No release authorized.
+
+Post-SDK queue refresh:32 PRs/21 issues across six managed repositories, including
+source/delivery pairs and deferred releases. Ranked report now explicitly includes
+#1212/#1213/#1315 native context-window work and its original-platform evidence hold.
+
+## Current integration checkpoint — SDK close landed; idle window in review
+
+#1334 merged as 0d12f6a11f52f78bdb8760a5b16f29acea4bb8a7 from final
+cb6950476c55c7227058c9531a05bd2b31483783. Original69316 exited0: 5746 pass,
+35 skip, zero failures across23 isolated groups; typecheck/build pass. Required
+final-head test CI38313634366 and all relevant checks pass. Merged tree
+927be89a62ef57dbf19b48c3d8847210de819167 matches the reviewed prospective tree
+exactly, including separately verified npm-lock repair #1355 (fb5854be5).
+#1326 remains open: its original Linux/OpenCode/Opus hang is not established fixed.
+No release. Earlier pending SDK/lock statements below are historical.
+
+#1341 source8e7b40cb is incorporated as authored d4590e9b3 with separate
+compatibility correction3140ccbd. 78 focused tests/typecheck pass; old timer
+negative control fails two tests. Official isolated agy1.2.7 read-only settings
+pass with paid credits disabled and stable binary identity. Live client gate
+and full local/CI remain. See [review evidence](evidence/1341-idle-window-20261012.md).
+
 ## Current integration checkpoint — OpenCode landed
 
 #1354 merged fa90c9aaf1e99d5fbd69f6725ce8be0dcc3cfff3 after final-head CI.
