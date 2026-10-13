@@ -23,6 +23,19 @@ the contributor's PR is what merges:
 Corrections to past PRs (reopening, comment edits, release notes, any rewrite of
 `main`) are the owner's decisions in #1363. Do not start them from this note.
 
+## Plugin config isolation — #1360 (2026-10-13)
+
+Nowaker's own PR #1360 carries the change; maintainer tests, CLI help and
+evidence are separate commits on their branch. This replaces draft #1362, which
+held a cherry-picked copy and is closed unmerged. With `MERIDIAN_CONFIG_DIR`
+set, plugin discovery and `plugins.json` follow that directory; explicit
+`MERIDIAN_PLUGIN_DIR` / `MERIDIAN_PLUGIN_CONFIG` still win. Unchanged main fails
+both isolation assertions and the real CLI probe; the candidate passes them
+through the source CLI and a packed, installed CLI.
+[Receipts and harness](evidence/1360-plugin-config-20261012/README.md).
+Not run: model inference through a plugin loaded from a relocated config
+directory. The change only moves two default paths, so no request path differs.
+
 ## Current Nix runtime integration — #1342 → #1357
 
 Authored current-main incorporation26e2dd4a5/dd4bf666 preserves Connor Grady's
