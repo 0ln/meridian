@@ -7958,3 +7958,25 @@ feedback without exploring private SDK attachment files. The model's prose is no
 an assertion. Retain before/after reports and join original processes/pipes before
 deleting temporary grants. This gate supplements E41 and E65; it does not claim
 the reporter's unspecified Pi/model/OS environment or a release is verified.
+
+## Native Sonnet context past 200k (#1212)
+
+`scripts/e2e-sonnet-native-context.mjs` runs actual OpenCode 2.0.16 with the
+installed Meridian V2 plugin against a built Meridian and real Sonnet 5.5. It
+needs `E2E_OPENCODE_BIN`, the independently installed OpenCode scrub as
+`E2E_PLUGIN_PATH`, and `E2E_MERIDIAN_ROOT` pointing at a tree with `dist/`.
+
+Two attached archives grow one conversation past 200k tokens. The proxy is then
+replaced by a fresh one with an empty session store, so the third turn is a full
+replay. The client config says 200k, so only the plugin's discovery of
+`/v1/models` can raise the window. Run it against unchanged `main` and against
+the change: `main` must fail the advertised-window check and either compact in
+the client or trim the replay, while the change passes every check, including
+more than 200k input tokens reaching the model on the replayed turn.
+
+Assertions are on requests, headers, the diagnostic log and token counts, never
+on the model's wording. One run costs roughly 600k Sonnet input tokens.
+`E2E_FILL_CHARS` set small rehearses the wiring cheaply; the token check then
+cannot pass. This gate covers the OpenCode V2 catalog and replay paths for the
+canonical Sonnet pin. It does not cover Sonnet 4.x `sonnet[1m]` billing or other
+clients.
