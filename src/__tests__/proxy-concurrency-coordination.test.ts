@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import { installSdkMock } from "./sdkMock"
 import { installLoggerMock } from "./loggerMock"
 import { installMcpToolsMock } from "./mcpToolsMock"
-import { progressBody, PROGRESS_FIRST_PROMPT, PROGRESS_WORK } from "./fixtures/claude-code-progress"
+import { progressBody, PROGRESS_FIRST_PROMPT, PROGRESS_PROMPT, PROGRESS_WORK } from "./fixtures/claude-code-progress"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -26,7 +26,7 @@ let activeQueries = 0
 let maxActiveQueries = 0
 let queryCalls = 0
 let controls: AttemptControl[] = []
-let capturedParams: Array<{ options?: { resume?: string; resumeSessionAt?: string; sessionId?: string; env?: Record<string, string> } }> = []
+let capturedParams: Array<{ prompt?: unknown; options?: { resume?: string; resumeSessionAt?: string; sessionId?: string; env?: Record<string, string> } }> = []
 let rateLimitWorkQueries = false
 
 function deferredAttempt(): AttemptControl & { wait: Promise<void>; markStarted: () => void } {
@@ -753,6 +753,70 @@ describe("SDK and Session concurrency coordination", () => {
     await (await nextP).text()
     expect(toolServer(3)).toBeDefined()
     expect(toolServer(3)).not.toBe(toolServer(2))
+  })
+
+  it("replays a progress caption as one cacheable SDK input and leaves working turns unchanged", async () => {
+    const app = createProxyServer({ port: 0, host: "127.0.0.1", silent: true }).app
+    const sessionId = `progress-layout-${crypto.randomUUID()}`
+    const agentId = "progress-agent"
+    const workP = app.fetch(claudeCodeSubagentRequest(PROGRESS_WORK, sessionId, agentId))
+    ;(await waitForControl(0)).release()
+    await (await workP).text()
+    expect(typeof capturedParams[0]?.prompt).toBe("string")
+    expect(capturedParams[0]?.options?.env?.FORCE_PROMPT_CACHING_5M).toBeUndefined()
+
+    const captionP = app.fetch(claudeCodeCaptionRequest(progressBody(sessionId).messages, sessionId, agentId))
+    ;(await waitForControl(1)).release()
+    await (await captionP).text()
+    const inputs: Array<{ message: { content: Array<{ text: string; cache_control?: unknown }> } }> = []
+    for await (const input of capturedParams[1]!.prompt as AsyncIterable<any>) inputs.push(input)
+    expect(inputs).toHaveLength(1)
+    const blocks = inputs[0]!.message.content
+    expect(blocks.filter(block => block.cache_control)).toHaveLength(1)
+    expect(blocks.at(-1)!.text.endsWith(PROGRESS_PROMPT)).toBe(true)
+    // No client breakpoint in this body: the marker closes the history.
+    expect(blocks.find(block => block.cache_control)!.text).toContain("Previously called tool")
+    expect(capturedParams[1]?.options?.env?.FORCE_PROMPT_CACHING_5M).toBe("1")
+  })
+
+  // Settings files may disable caching through their own `env`, which only
+  // the CLI resolves, so any loaded setting source skips the breakpoint.
+  it("adds no replay breakpoint when setting files are loaded", async () => {
+    const original = process.env.MERIDIAN_LOAD_CONTEXT
+    process.env.MERIDIAN_LOAD_CONTEXT = "1"
+    try {
+      const app = createProxyServer({ port: 0, host: "127.0.0.1", silent: true }).app
+      const sessionId = `progress-settings-${crypto.randomUUID()}`
+      const captionP = app.fetch(claudeCodeCaptionRequest([
+        ...PROGRESS_WORK, { role: "assistant", content: "ok" }, { role: "user", content: PROGRESS_FIRST_PROMPT },
+      ], sessionId, "progress-agent"))
+      ;(await waitForControl(0)).release()
+      await (await captionP).text()
+      expect(typeof capturedParams[0]?.prompt).toBe("string")
+    } finally {
+      if (original === undefined) delete process.env.MERIDIAN_LOAD_CONTEXT
+      else process.env.MERIDIAN_LOAD_CONTEXT = original
+    }
+  })
+
+  // The per-family switches are covered by promptCachingDisabled's own tests:
+  // the resolved model depends on the account the test run resolves.
+  it("adds no replay breakpoint when DISABLE_PROMPT_CACHING turns caching off", async () => {
+    const original = process.env.DISABLE_PROMPT_CACHING
+    process.env.DISABLE_PROMPT_CACHING = " true "
+    try {
+      const app = createProxyServer({ port: 0, host: "127.0.0.1", silent: true }).app
+      const sessionId = `progress-nocache-${crypto.randomUUID()}`
+      const captionP = app.fetch(claudeCodeCaptionRequest([
+        ...PROGRESS_WORK, { role: "assistant", content: "ok" }, { role: "user", content: PROGRESS_FIRST_PROMPT },
+      ], sessionId, "progress-agent"))
+      ;(await waitForControl(0)).release()
+      await (await captionP).text()
+      expect(typeof capturedParams[0]?.prompt).toBe("string")
+    } finally {
+      if (original === undefined) delete process.env.DISABLE_PROMPT_CACHING
+      else process.env.DISABLE_PROMPT_CACHING = original
+    }
   })
 
   it("does not queue a progress summary behind its subagent's running turn", async () => {
