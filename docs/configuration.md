@@ -325,6 +325,7 @@ adapter lets the subprocess run the built-in WebFetch at all.
 | `GET/POST /design-login` | OAuth flow for the design scopes |
 | `GET /health` | Auth status, mode, plugin status |
 | `GET /inflight` | Client requests in flight per upstream; loopback clients only. See [Restarting when idle](#restarting-when-idle) |
+| `POST /drain`, `DELETE /drain` | Best-effort bounded generation hold for local supervisors; configured API key required. See [Draining for a restart](#draining-for-a-restart) |
 | `POST /auth/refresh` | Manually refresh the OAuth token |
 | `GET /telemetry` | Performance dashboard |
 | `GET /telemetry/requests` | Recent request metrics (JSON) |
@@ -621,6 +622,75 @@ probe. Use the [graceful shutdown](#graceful-shutdown) drain; this endpoint
 is not an admission barrier. Background Responses jobs are not restart
 resumable, so a supervisor must also wait for those jobs and pending client
 tool continuations to finish through their own lifecycle APIs.
+
+### Draining for a restart
+
+Overlapping traffic can prevent `total` reaching zero. `POST /drain` opens a
+best-effort idle opportunity by delaying new generation requests while already
+admitted work continues. A zero snapshot does not authorize a safe restart or
+transfer accepted client connections. Long requests, time caps, saturation and
+background work can still prevent idle; a supervisor must give up or retry.
+
+- DELETE or the drain timeout releases held requests normally. Each request
+  also proceeds after its individual `holdMs` cap. There is no guarantee that
+  a client will tolerate the delay without its own timeout or retry.
+- A drain ends on `DELETE /drain`, after `timeoutMs`, or when Meridian begins
+  shutting down. At shutdown the held requests get the shutdown `503` with
+  `Retry-After`, as any new request does.
+- Held requests are not in `total`; `drain.held` counts them.
+- It holds Claude Messages and public OpenAI generation translations once,
+  plus combined Antigravity generation submissions (`/v1/messages`,
+  `/messages`, `/v1/chat/completions`, `/v1/responses` under `/antigravity`).
+  Cancellation, token estimates, polling/retrieval/deletion and other control
+  operations remain usable. Every admitted combined-provider POST retains its
+  existing HTTP count. Background Responses
+  jobs and pending client tool continuations keep running and are not held, so
+  a supervisor still waits for them through their own lifecycle APIs.
+- Body (optional JSON): `holdMs` (default 60000, 1000-240000) and `timeoutMs`
+  (default 600000, 10000-3600000). A `POST` while a drain is active changes
+  nothing and answers `started: false`.
+- The options body is limited to 1 KiB and a two-second read deadline. Shutdown
+  or socket abort revokes a pending read's authority. At the internal limit of
+  128 retained held reservations, additional requests proceed normally;
+  saturation does not increment `admittedAtCap`. This bounds held reservations,
+  timers and listeners, not all HTTP payloads or total server memory.
+- POST/DELETE require the actual loopback peer, no Forwarded/X-Forwarded-For/
+  X-Real-IP headers, and no Origin header, including empty or `null`. If
+  `MERIDIAN_API_KEY` is configured, the matching `x-api-key` or Bearer key is
+  also required. GET `/inflight` keeps its existing keyless read-only policy.
+- Same-key and declared subtree cancellation reaches live, parsed held
+  requests without remembering a cancellation for later requests. Socket
+  abort removes its waiter before any SDK/session-store work. A body-only
+  identity cannot be registered before its JSON bytes arrive. Held requests
+  keep the existing opt-in idle-exit lifetime busy.
+- State belongs to this instance and disappears at restart. Authorized local
+  operators share it; the first caller has no exclusive lease. Standalone
+  Antigravity is unchanged. Soft-hold `draining` is distinct from shutdown
+  health/readiness and does not change them.
+
+`GET /inflight` reports it:
+
+```json
+{
+  "scope": "client-http",
+  "total": 0,
+  "draining": true,
+  "drain": {
+    "active": true,
+    "startedAt": "2026-09-30T12:00:00.000Z",
+    "endsAt": "2026-09-30T12:10:00.000Z",
+    "holdMs": 60000,
+    "held": 2,
+    "admittedAtCap": 0,
+    "lastEnded": null
+  }
+}
+```
+
+A supervisor that gives up calls idempotent `DELETE /drain`. During shutdown,
+held clients receive the existing route-appropriate 503/Retry-After response;
+their client must retry if appropriate. A replacement process has no previous
+hold or accepted connection ownership.
 
 ## Graceful shutdown
 
