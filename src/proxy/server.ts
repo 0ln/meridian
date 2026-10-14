@@ -94,6 +94,8 @@ import { getLatestVersion, isUpdateCheckEnabled, startUpdateCheck, stopUpdateChe
 import { createAuthStatusOwner } from "./authStatusOwnership"
 import { mapModelToClaudeModel, resolveClaudeExecutableAsync, resolveSdkModelDefaults, explicitModelPin, CANONICAL_SONNET_MODEL, isClosedControllerError, getClaudeAuthStatusAsync, getAuthCacheInfo, expireAuthStatusCache, getResolvedClaudeExecutableInfo, hasExtendedContext, stripExtendedContext, recordExtendedContextUnavailable, recordExtendedContextRateLimited, subscriptionIncludesExtendedContext } from "./models"
 import { livenessReport, readinessReport, renderProbe } from "./probes"
+import { UpstreamReachability, DEFAULT_OVERRIDE_TTL_MS, MAX_OVERRIDE_TTL_MS, unreachableDetail, withReachability } from "./upstreamReachability"
+import { resolveReachabilityThresholds } from "./upstreamReachabilityConfig"
 import type { AnthropicSseEvent } from "./openai"
 import { translateOpenAiToAnthropic, translateAnthropicToOpenAi, buildModelList, createSseTranslator } from "./openai"
 import { normalizeJcodeSessionId } from "./adapters/jcode"
@@ -147,7 +149,7 @@ import {
   OVERLOADED_RETRY_AFTER_SECONDS,
 } from "./retryAfter"
 import { getSetting, setSetting, TELEMETRY_SETTING_LIMITS } from "../settings" 
-import { headerSettingsResponse, healthHostname } from "../headerSettings"
+import { headerSettingsResponse, healthHostname, permitsLocalBrowserWrite } from "../headerSettings"
 import { claudeExecutableSettingsResponse } from "./claudeExecutableSettings"
 import { createClaudeProbeOwner } from "./claudeProbeOwnership"
 import { startProfileLogin, completeProfileLogin, completeProfileLoginFromCallback, getProfileLoginStatus } from "./profileLogin"
@@ -910,6 +912,8 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
     claudeLog("drain.end", { reason, held: final.held, admittedAtCap: final.admittedAtCap })
     plog(`[PROXY] drain ended (${reason}); ${final.held} held request(s) released, ${final.admittedAtCap} admitted earlier at the hold cap`)
   })
+  // Native traffic belongs to this embedded instance, even when SDK capacity is shared.
+  const claudeReachability = new UpstreamReachability(Date.now, resolveReachabilityThresholds)
   const activeRequestAborts = new Set<AbortController>()
   /** Cause-aware shutdown aborts: each entry labels its request's registry
    * before the controller fires, because the shutdown producer aborts the
@@ -1166,8 +1170,15 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
       }
       signal.throwIfAborted()
       sdkQuery = query(params)
-      yield* guardUpstreamIdle(sdkQuery, UPSTREAM_IDLE_MS, (sinceLastMs) =>
-        claudeLog("upstream.stalled", { mode, sinceLastMs }), undefined, logLateIdleDeadline(mode))
+      // Read outside the idle guard, never between it and the query: the guard
+      // tears its source down without awaiting it, and a generator in between
+      // would hold that teardown behind a pull that may never settle.
+      yield* withReachability(
+        guardUpstreamIdle(sdkQuery, UPSTREAM_IDLE_MS, (sinceLastMs) =>
+          claudeLog("upstream.stalled", { mode, sinceLastMs }), undefined, logLateIdleDeadline(mode)),
+        claudeReachability,
+        { includePartialMessages: params.options?.includePartialMessages === true },
+      )
     } finally {
       try {
         // Production Query objects expose close(); test doubles and older SDK
@@ -1224,6 +1235,11 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
   app.use("/providers/*", requireAuth)
   app.use("/antigravity/*", requireAuth)
   app.use("/drain", requireAuth)
+  app.use("/upstream-reachability", async (c, next) => {
+    c.header("Cache-Control", "no-store")
+    await next()
+  })
+  app.use("/upstream-reachability", requireAuth)
 
   // Separate provider routes; Claude retains all existing paths and semantics.
   app.all('/antigravity/*', async c => {
@@ -9056,11 +9072,54 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
     const report = readinessReport({
       profileCount: listProfiles(finalConfig.profiles, finalConfig.defaultProfile).length,
       claudeExecutableResolved: executableResolved,
+      claudeUnreachable: unreachableDetail(claudeReachability.snapshot()),
     })
     return c.text(
       renderProbe("readyz", report, c.req.query("verbose") !== undefined),
       report.ok ? 200 : 503,
     )
+  })
+
+  // Force the reachability state, so a load balancer's failover can be tested
+  // without breaking a host's DNS. Loopback only, like /inflight, and behind the
+  // API key when one is set: it takes an instance out of rotation. A forced
+  // state expires on its own, so a forgotten test cannot.
+  app.put("/upstream-reachability", async (c) => {
+    c.header("Cache-Control", "no-store")
+    if (!permitsLocalBrowserWrite(c.req.raw)) {
+      return c.json({ error: "Reachability overrides require a same-origin request" }, 403)
+    }
+    let remoteAddress: string | undefined
+    try {
+      remoteAddress = getConnInfo(c).remote.address
+    } catch {
+      // Served by something other than @hono/node-server: no peer to trust.
+      remoteAddress = undefined
+    }
+    if (!isLoopbackPeer(remoteAddress, c.req.raw.headers)) {
+      return c.json({ error: { type: "forbidden", message: "/upstream-reachability is answered only to loopback clients" } }, 403)
+    }
+    let input: unknown
+    try { input = await c.req.json() } catch { return c.json({ error: "Invalid JSON" }, 400) }
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return c.json({ error: "Body must be a JSON object" }, 400)
+    }
+    const body = input as Record<string, unknown>
+    if (body.upstream !== undefined && body.upstream !== "claude") {
+      return c.json({ error: "upstream must be \"claude\"" }, 400)
+    }
+    if (body.state !== null && body.state !== "unreachable" && body.state !== "ok") {
+      return c.json({ error: "state must be \"unreachable\", \"ok\", or null to clear" }, 400)
+    }
+    const ttlMs = body.ttlMs === undefined ? DEFAULT_OVERRIDE_TTL_MS : body.ttlMs
+    if (typeof ttlMs !== "number" || !Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > MAX_OVERRIDE_TTL_MS) {
+      return c.json({ error: `ttlMs must be an integer from 1 to ${MAX_OVERRIDE_TTL_MS}` }, 400)
+    }
+    if (body.state === null) claudeReachability.clearOverride()
+    else claudeReachability.force(body.state, ttlMs)
+    plog(`[PROXY] upstream reachability override: ${body.state === null ? "cleared" : `${body.state} for ${ttlMs}ms`}`)
+    c.header("Cache-Control", "no-store")
+    return c.json({ upstream: { claude: claudeReachability.snapshot() } })
   })
 
   // Health check endpoint — verifies auth status
@@ -9071,6 +9130,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
 
   app.get("/health", async (c) => {
     c.header("Cache-Control", "no-store")
+    const upstreamSnapshot = () => ({ claude: claudeReachability.snapshot() })
     // Checked first and unconditionally: a fleet manager routing on this
     // endpoint (e.g. a gateway's account-pool scheduler) needs to learn
     // "stop sending here" as fast as possible during shutdown, without
@@ -9081,6 +9141,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         version: serverVersion,
         backend: finalConfig.backend ?? "claude",
         ...healthHostname(),
+        upstream: upstreamSnapshot(),
         message: "Meridian is shutting down; route new requests to another instance.",
       }, 503)
     }
@@ -9096,6 +9157,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         version: serverVersion,
         backend: finalConfig.backend ?? "claude",
         ...healthHostname(),
+        upstream: upstreamSnapshot(),
         error: "Cannot capture a process incarnation, so no request that touches a session can be served.",
         bootIdentity,
       }, 503)
@@ -9114,6 +9176,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
           version: serverVersion,
           backend: finalConfig.backend ?? "claude",
           ...healthHostname(),
+          upstream: upstreamSnapshot(),
           build: currentBuild(),
           error: "Could not verify auth status",
           mode: envBool("PASSTHROUGH") ? "passthrough" : "internal",
@@ -9125,6 +9188,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
           version: serverVersion,
           backend: finalConfig.backend ?? "claude",
           ...healthHostname(),
+          upstream: upstreamSnapshot(),
           build: currentBuild(),
           error: "Not logged in. Run: claude login",
           auth: { loggedIn: false }
@@ -9174,6 +9238,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         version: serverVersion,
         backend: finalConfig.backend ?? "claude",
         ...healthHostname(),
+        upstream: upstreamSnapshot(),
         build: currentBuild(),
         auth: {
           loggedIn: true,
@@ -9199,6 +9264,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
         version: serverVersion,
         backend: finalConfig.backend ?? "claude",
         ...healthHostname(),
+        upstream: upstreamSnapshot(),
         build: currentBuild(),
         error: "Could not verify auth status",
         mode: envBool("PASSTHROUGH") ? "passthrough" : "internal",
