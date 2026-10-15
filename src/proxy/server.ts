@@ -60,6 +60,7 @@ import { exec as execCallback } from "child_process"
 import { promisify } from "util"
 import { randomUUID } from "crypto"
 import { withClaudeLogContext } from "../logger"
+import { parseToolInputObject } from "./toolInputJson"
 import { createPassthroughMcpServer, createPassthroughReplayToolNameRenderer, resolveClientToolName, normalizeToolInput, hasRepairableToolInput, computeToolSetKey, toolUseSignature, PASSTHROUGH_MCP_NAME, PASSTHROUGH_MCP_PREFIX, passthroughMcpPrefix, autoDeferDecision, getAutoDeferThreshold } from "./passthroughTools"
 import { describeLocalBootIdentity } from "./session/processIncarnation"
 import { detectServerTools, serverToolErrorMessage } from "./tools"
@@ -72,7 +73,7 @@ import { LRUMap } from "../utils/lruMap"
 import { telemetryStore, diagnosticLog, createTelemetryRoutes, landingHtml, renderPrometheusMetrics, resolveTelemetryConfig, diagnosticLogCapacity } from "../telemetry"
 import { detectSupervision } from "./supervision"
 import type { RequestMetric } from "../telemetry"
-import { canRecoverCapturedToolUses, canRecoverUncapturedToolUses, isStreamedToolBlockComplete, unavailableToolResults, type StreamedToolBlockRecord, classifyError, extractSdkTermination, formatSdkTermination, classifyResumeRefusal, isRateLimitError, isExtraUsageRequiredError, isExpiredTokenError, isAccountFailoverError, isQuotaRefusal, isOutputTokenCapExceeded } from "./errors"
+import { canRecoverCapturedToolUses, uncapturedRecoveryVeto, streamedToolBlockVeto, cliRejectedToolResults, type StreamedToolBlockRecord, type UncapturedDeliveryVeto, classifyError, extractSdkTermination, formatSdkTermination, classifyResumeRefusal, isRateLimitError, isExtraUsageRequiredError, isExpiredTokenError, isAccountFailoverError, isQuotaRefusal, isOutputTokenCapExceeded } from "./errors"
 import { createSseRelayStream, relayStreamAttempt } from "./sseFailureSniff"
 import { refreshOAuthToken, ensureFreshToken, startBackgroundRefresh, stopBackgroundRefresh, createPlatformCredentialStore, readStoredCredentialSnapshot, getAuthRenewalStatus, getStoredPlanFields, renewalStatusFor, resolveRenewalWarnDays, type CredentialStore, type StoredPlanFields } from "./tokenRefresh"
 import { planAllowance } from "./planAllowance"
@@ -5485,17 +5486,18 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
             let nextPassthroughToolCallAssistantUuid: string | undefined
             let nextPassthroughToolCallIds: string[] | undefined
             let sawCanonicalResult = false
-            // The CLI sometimes refuses a bare client tool name before the
-            // PreToolUse hook runs. A complete streamed call with an explicit,
-            // id-matched "No such tool available" result can still be handed to
-            // the client, but the rejected SDK session must be evicted first.
+            // The CLI sometimes refuses a client call before the PreToolUse
+            // hook runs: a bare tool name, or arguments it cannot parse. A
+            // complete streamed call with an explicit, id-matched rejection
+            // (see cliRejectedToolResults) can still be handed to the client,
+            // but the rejected SDK session must be evicted first.
             // The opt-in flag also covers uncaptured calls without that proof;
             // =0 disables both paths.
             const uncapturedRecoverySetting = env("PASSTHROUGH_UNCAPTURED_TOOL_RECOVERY")
             const uncapturedToolRecoveryEnabled = uncapturedRecoverySetting === "1"
             const trackUncapturedTools = uncapturedRecoverySetting !== "0"
             const streamedToolBlockRecords = new Map<number, StreamedToolBlockRecord>()
-            const unavailableToolNames = new Map<string, string>()
+            const cliRejectedToolNames = new Map<string, string>()
             // Silent-turn recovery state (see turnOutcome.ts). Kill switch:
             // MERIDIAN_SILENT_TURN_RECOVERY=0 leaves the detection and the
             // telemetry in place and skips only the extra model turn — so an
@@ -5580,7 +5582,12 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
               let fixed = buffered.json
               try {
                 const clientTool = requestTools.find((tool: { name: string; input_schema?: Parameters<typeof normalizeToolInput>[1] }) => tool.name === buffered.name)
-                const parsed = normalizeToolInput(JSON.parse(buffered.json), clientTool?.input_schema)
+                // Fine-grained tool streaming can deliver a raw control
+                // character inside a string; send the client strict JSON.
+                const parsed = normalizeToolInput(
+                  parseToolInputObject(buffered.json) ?? JSON.parse(buffered.json),
+                  clientTool?.input_schema,
+                )
                 // NOTE: agent-specific — preserve Task alias normalization.
                 // Polytoken is exempt (client-owned orchestration, exact
                 // payload preservation — see the capture-hook note above).
@@ -6158,8 +6165,8 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
                     noteUserContent(earlyStop, (message as any).message?.content)
                   }
                   if (trackUncapturedTools && message.type === "user") {
-                    for (const { id, name } of unavailableToolResults(message.message.content)) {
-                      unavailableToolNames.set(id, resolveClientToolName(name, passthroughMcp?.clientNameByAlias, passthroughMcpName))
+                    for (const { id, name } of cliRejectedToolResults(message.message.content)) {
+                      cliRejectedToolNames.set(id, resolveClientToolName(name, passthroughMcp?.clientNameByAlias, passthroughMcpName))
                     }
                   }
                   if (earlyStopEnabled && !earlyStopFired) {
@@ -7578,9 +7585,12 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
               const confirmedToolUnavailable = trackUncapturedTools &&
                 streamedToolBlockRecords.size > 0 &&
                 [...streamedToolBlockRecords.values()].every(record =>
-                  unavailableToolNames.get(record.id) === record.name)
-              const uncapturedEligible = (() => {
-                if (!canRecoverUncapturedToolUses({
+                  cliRejectedToolNames.get(record.id) === record.name)
+              // The first condition that blocks uncaptured recovery, named in
+              // the failure log so the next occurrence is diagnosable from
+              // telemetry alone.
+              const uncapturedVeto = ((): UncapturedDeliveryVeto | undefined => {
+                const predicateVeto = uncapturedRecoveryVeto({
                   reason: sdkTerm.reason,
                   passthrough,
                   capturedToolUses: capturedToolUses.length,
@@ -7592,10 +7602,13 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
                   uncapturedRecoveryEnabled: uncapturedToolRecoveryEnabled,
                   confirmedToolUnavailable,
                   attemptedMaxTurns: lastAttemptMaxTurns,
-                })) return false
-                if (!messageStartEmitted || streamClosed || (pendingTerminalDelta && !confirmedToolUnavailable)) return false
-                if (durableWritesRevoked) return false
-                if (requestAbort.abortSnapshot().aborted) return false
+                })
+                if (predicateVeto) return predicateVeto
+                if (!messageStartEmitted) return "envelope_unopened"
+                if (streamClosed) return "stream_closed"
+                if (pendingTerminalDelta && !confirmedToolUnavailable) return "terminal_delta"
+                if (durableWritesRevoked) return "durable_writes_revoked"
+                if (requestAbort.abortSnapshot().aborted) return "aborted"
                 // Every streamed block must be complete. Without the CLI's
                 // rejection there is no proof the call did not run, so it
                 // must also name a declared client tool (after alias
@@ -7606,16 +7619,17 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
                 // the client's own invalid-tool result lets the model correct
                 // itself.
                 for (const record of streamedToolBlockRecords.values()) {
-                  if (!isStreamedToolBlockComplete(record)) return false
+                  const blockVeto = streamedToolBlockVeto(record)
+                  if (blockVeto) return blockVeto
                   const declared = requestTools.some((t: { name: string }) => t.name === record.name)
-                  if (!declared && !confirmedToolUnavailable) return false
+                  if (!declared && !confirmedToolUnavailable) return "undeclared_tool"
                 }
                 // The tracker must cover every streamed id; a divergence
                 // (e.g. a block the buffered path skipped tracking) is a veto.
-                if (streamedToolBlockRecords.size !== streamedToolUseIds.size) return false
-                return true
+                if (streamedToolBlockRecords.size !== streamedToolUseIds.size) return "untracked_block"
+                return undefined
               })()
-              const uncapturedRecoveryActive = uncapturedEligible
+              const uncapturedRecoveryActive = uncapturedVeto === undefined
 
               // A turn-cap stop is the one drain failure whose checkpoint is
               // safe to keep — but only for the CAPTURED path, and the reason
@@ -8067,7 +8081,12 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
                   sdkSessionId: currentSessionId || resumeSessionId,
                   abort: requestAbort.abortSnapshot(),
                 })} envelope=${messageStartEmitted ? "open" : "unopened"} blocks=${contentBlocksForwarded} ` +
-                `text=${textEventsForwarded} tools=${capturedToolUses.length}/${streamedToolUseIds.size}`,
+                `text=${textEventsForwarded} tools=${capturedToolUses.length}/${streamedToolUseIds.size}` +
+                // Streamed calls the hook never captured: say which veto kept
+                // them from the client, and how many the CLI explicitly refused.
+                (passthrough && capturedToolUses.length === 0 && streamedToolUseIds.size > 0 && uncapturedVeto
+                  ? ` uncaptured_veto=${uncapturedVeto} cli_rejected=${cliRejectedToolNames.size}`
+                  : ""),
                 requestMeta.requestId,
               )
 
