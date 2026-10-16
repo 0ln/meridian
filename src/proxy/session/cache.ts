@@ -460,8 +460,12 @@ export function messagesHeld(lineage: LineageResult, messages: ReadonlyArray<{ r
  * be sent those turns as a delta, and a resume delta keeps only the user's
  * side of them, taking the assistant's for turns the session wrote itself. A
  * copy elsewhere holding no more says nothing against the one here, however
- * recently it was used: it was carried from this one and refused before its
- * turn, or it has gone further than a rewind the history went back to.
+ * recently it was used: the conversation came back before it went on there,
+ * or it has gone further than a rewind the history went back to.
+ *
+ * Lineage here is the raw client history's, which decides ownership. A copy
+ * published from a plugin-rewritten execution keeps only its raw-client proof
+ * (`clientLineageHash`), and verifyLineage still measures it by that.
  *
  * Reads the shared store only; a copy it cannot read does not count. Only
  * copies used since `own.lastUsedAt` are checked against the history, so a

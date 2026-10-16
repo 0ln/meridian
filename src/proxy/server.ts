@@ -3125,17 +3125,25 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
           lineageResult = { type: "diverged", reason: "missing-session-header" }
         }
         // A copy of this conversation on another account holding more of
-        // this history than the one here, which would be resumed or which is
-        // missing: copies are kept per account and outlive a move, so the one
-        // here can be behind the conversation (copyElsewhereHoldingMore).
-        // Kept under its session key, or, for a client that sends none, its
-        // fingerprint, scoped to each account as this account's is above.
+        // this history than the one here, which would be resumed: copies are
+        // kept per account and outlive a move, so the one here can be behind
+        // the conversation (copyElsewhereHoldingMore). Kept under its session
+        // key, or, for a client that sends none, its fingerprint, scoped to
+        // each account as this account's is above. Looked for only when the
+        // copy here would be resumed, so a new or replayed conversation reads
+        // no other account's mapping.
+        //
+        // Both copies are measured against the raw client lineage, which
+        // decides ownership: a copy elsewhere published from a plugin-rewritten
+        // history keeps only its raw-client proof (clientLineageHash) and still
+        // counts. The replay this forces runs the execution history, and its
+        // publication keeps the SDK-prefix proof rules of any other replay.
         const ownCopy = durableMappingAtTurn.status === "found" ? durableMappingAtTurn.session : undefined
         const keyOn = (profileId: string): string | undefined => agentSessionId
           ? mappingKeyOn(profileId, agentSessionId)
           : getConversationFingerprint(lineageMessages, profileId !== "default" ? `${clientWorkingDirectory}::profile=${profileId}` : clientWorkingDirectory)
         const elsewhere = durableMappingKey && !isIndependentSession
-          && (lineageResult.type !== "diverged" || lineageResult.reason === "not-found")
+          && lineageResult.type !== "diverged" && ownCopy
           ? copyElsewhereHoldingMore(
               getEffectiveProfiles(finalConfig.profiles)
                 .filter(other => other.id !== profile.id)
