@@ -7,9 +7,8 @@
  * signal never aborts. A request cancelled while the model is still thinking
  * (Esc in Claude Code, an orchestrator stopping subagents still starting) then
  * runs on to the end of its turn, on the account's allowance. Under Node the
- * server hears the client go and the request stops (E87). The supervisor runs
- * the build under Node,
- * and the source under Bun only when there is no build.
+ * server hears the client go and the request stops. The supervisor runs the
+ * build under Node, and the source under Bun only when there is no build.
  */
 export function runtimeCancelWarning(versions: Partial<NodeJS.ProcessVersions> = process.versions): string | undefined {
   if (!versions.bun) return undefined

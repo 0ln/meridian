@@ -1,6 +1,6 @@
 /**
  * Under Bun the proxy is never told of a client that goes away before the
- * first byte of its response, so the model runs on (E87). Startup says so.
+ * first byte of its response, so the model runs on. Startup says so.
  */
 import { describe, it, expect } from "bun:test"
 import { runtimeCancelWarning } from "../proxy/runtimeCancelWarning"
