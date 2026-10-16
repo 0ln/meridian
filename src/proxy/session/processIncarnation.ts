@@ -50,6 +50,10 @@ const WINDOWS_PROBE_TIMEOUT_MS = 10_000
 // A probe awaited rather than run synchronously holds nothing else meanwhile,
 // so it can wait out a loaded host (captureProcessIncarnationAsync).
 const ASYNC_PROBE_TIMEOUT_MS = 10_000
+// execFile's timeout only signals the probe, and its callback still waits for
+// the probe to exit. A probe that ignores the signal would hold the awaiting
+// request forever, so the awaited probe also answers by this later deadline.
+const ASYNC_PROBE_DEADLINE_GRACE_MS = 2_000
 
 /**
  * How long a single capture may block before it gives up. Callers that gate a
@@ -190,23 +194,58 @@ function runDarwin(command: string, args: readonly string[]): string | undefined
   return result.stdout
 }
 
-/** As the synchronous runners: exit status (null when it did not exit on its own) and output. */
-function runAsync(
+export interface ProcessProbeResult {
+  /** Exit status, or null when the probe did not exit on its own. */
+  status: number | null
+  stdout?: string
+}
+
+export interface ProcessProbeLimits {
+  env?: NodeJS.ProcessEnv
+  /** When execFile signals the probe. */
+  timeoutMs?: number
+  /** When the probe is answered as failed and force-killed, whatever its state. */
+  deadlineMs?: number
+}
+
+/**
+ * Run a probe without holding the event loop, as the synchronous runners do
+ * with spawnSync. Always settles: by the probe's own result, or by the outer
+ * deadline, which force-kills the probe and releases its pipes.
+ */
+export function runProcessProbeAsync(
   command: string,
   args: readonly string[],
-  env?: NodeJS.ProcessEnv,
-): Promise<{ status: number | null; stdout?: string }> {
+  limits: ProcessProbeLimits = {},
+): Promise<ProcessProbeResult> {
+  const timeoutMs = limits.timeoutMs ?? ASYNC_PROBE_TIMEOUT_MS
+  const deadlineMs = limits.deadlineMs ?? timeoutMs + ASYNC_PROBE_DEADLINE_GRACE_MS
   return new Promise((resolve) => {
-    execFile(command, [...args], {
+    let settled = false
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    const settle = (result: ProcessProbeResult): void => {
+      if (settled) return
+      settled = true
+      if (deadline) clearTimeout(deadline)
+      resolve(result)
+    }
+    const child = execFile(command, [...args], {
       encoding: "utf8",
-      ...(env ? { env } : {}),
-      timeout: ASYNC_PROBE_TIMEOUT_MS,
+      ...(limits.env ? { env: limits.env } : {}),
+      timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
       windowsHide: true,
     }, (error, stdout) => {
       const status = error === null ? 0 : typeof error.code === "number" ? error.code : null
-      resolve({ status, ...(typeof stdout === "string" ? { stdout } : {}) })
+      settle({ status, ...(typeof stdout === "string" ? { stdout } : {}) })
     })
+    deadline = setTimeout(() => {
+      if (settled) return
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      settle({ status: null })
+    }, deadlineMs)
   })
 }
 
@@ -493,11 +532,11 @@ export function captureProcessIncarnation(pid = process.pid): ProcessIncarnation
 
 async function observeProcessStartAsync(pid: number): Promise<ProcessStartObservation> {
   if (process.platform === "darwin") {
-    const result = await runAsync("/bin/ps", darwinStartArgs(pid), darwinProbeEnv())
+    const result = await runProcessProbeAsync("/bin/ps", darwinStartArgs(pid), { env: darwinProbeEnv() })
     return darwinStartFrom(result.status === 0 ? result.stdout : undefined, pid)
   }
   if (process.platform === "win32") {
-    return windowsStartFrom(await runAsync("powershell.exe", [...POWERSHELL_ARGS, windowsStartScript(pid)]), pid)
+    return windowsStartFrom(await runProcessProbeAsync("powershell.exe", [...POWERSHELL_ARGS, windowsStartScript(pid)]), pid)
   }
   // Linux reads /proc: a file, with no child process to wait for.
   return observeProcessStart(pid)
@@ -509,6 +548,8 @@ async function observeProcessStartAsync(pid: number): Promise<ProcessStartObserv
  * run synchronously it holds every other request, and on a host loaded near 40
  * it outran PROBE_TIMEOUT_MS. The SDK gate captures each request's wrapper this
  * way (sdkProcessGate.ts). Same probe and output as the synchronous capture.
+ * A probe that never answers is force-killed at its outer deadline, and the
+ * capture returns undefined, so the awaiting request fails rather than hangs.
  */
 export async function captureProcessIncarnationAsync(pid: number): Promise<ProcessIncarnation | undefined> {
   if (!isPositivePid(pid) || pid === process.pid) return captureProcessIncarnation(pid)

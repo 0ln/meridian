@@ -1,5 +1,8 @@
 import { describe, expect, it, spyOn } from "bun:test"
 import * as childProcess from "node:child_process"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   captureProcessIncarnation,
   captureProcessIncarnationAsync,
@@ -9,6 +12,7 @@ import {
   parseProcessIncarnationJson,
   probeProcessIncarnation,
   processIncarnationPredatesBoot,
+  runProcessProbeAsync,
   type LocalBootIdentity,
   type ProcessIncarnation,
 } from "../proxy/session/processIncarnation"
@@ -193,6 +197,56 @@ describe("process incarnation protocol", () => {
     expect(await captureProcessIncarnationAsync(child.pid!)).toBeUndefined()
   }, 25_000)
 })
+
+describe("awaited process probe deadline", () => {
+  it("answers a probe that exits with its status and output", async () => {
+    const result = await runProcessProbeAsync(process.execPath, ["-e", "process.stdout.write('probed')"])
+    expect(result).toEqual({ status: 0, stdout: "probed" })
+  }, 25_000)
+
+  // execFile's timeout only sends SIGTERM and then waits for the probe to exit.
+  // A probe that ignores it held the request awaiting it with no end.
+  it("answers a probe that ignores its timeout by the outer deadline, and kills it", async () => {
+    // win32 terminates on timeout outright; a probe cannot ignore it there.
+    if (process.platform === "win32") return
+    const root = mkdtempSync(join(tmpdir(), "meridian-probe-deadline-"))
+    try {
+      const pidFile = join(root, "pid")
+      const script = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`
+        + "process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)"
+      const started = performance.now()
+      const result = await runProcessProbeAsync(process.execPath, ["-e", script], { timeoutMs: 200, deadlineMs: 1_500 })
+      const elapsed = performance.now() - started
+      expect(result).toEqual({ status: null })
+      // Answered by the deadline, not by execFile's timeout.
+      expect(elapsed).toBeGreaterThanOrEqual(1_400)
+      expect(elapsed).toBeLessThan(10_000)
+      const pid = Number(readFileSync(pidFile, "utf8"))
+      expect(pid).toBeGreaterThan(0)
+      expect(await waitUntilGone(pid, 5_000)).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 25_000)
+})
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return !(error instanceof Error && "code" in error && error.code === "ESRCH")
+  }
+}
+
+async function waitUntilGone(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = performance.now() + timeoutMs
+  while (performance.now() < deadline) {
+    if (!processExists(pid)) return true
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  return !processExists(pid)
+}
 
 function captureCurrentProcessIncarnation(): ProcessIncarnation {
   // Retried, mirroring what startProxyServer now does. On Linux the identity

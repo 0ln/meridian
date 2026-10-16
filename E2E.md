@@ -77,12 +77,15 @@ request, and under heavy load it outran its 2 s timeout, so the request failed
 before any Messages call with `cannot capture SDK writer process incarnation`.
 `createSdkProcessGate` now awaits `captureProcessIncarnationAsync`, which runs
 the same probe with `execFile` and a 10 s timeout and returns the same identity
-as the synchronous capture. Linux still reads `/proc` directly.
+as the synchronous capture. Linux still reads `/proc` directly. A probe that
+ignores execFile's SIGTERM is force-killed at an outer deadline 2 s later, and
+the request fails with the same error instead of waiting on it indefinitely.
 
 **Unit coverage:** `process-incarnation.test.ts` (the async capture matches the
 synchronous one without calling `spawnSync`, and captures nothing of an exited
-process) and `sdk-process-gate.test.ts` (the gate captures its wrapper without
-calling `spawnSync`).
+process; a probe that ignores its timeout is answered by the outer deadline
+and killed) and `sdk-process-gate.test.ts` (the gate captures its wrapper
+without calling `spawnSync`).
 
 **Source evidence (not re-run here):** recorded on the contributor's fork on
 macOS with Claude CLI 2.1.284–2.1.294, through a parallel background-subagent
