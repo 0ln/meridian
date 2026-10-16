@@ -41,7 +41,8 @@ import { isClaudeCodeProgressSummary } from "./claudecodeProgress"
  * `<system-reminder>` block opening the first user message for one that does
  * not (Haiku 4.5). Read from the system prompt alone, no request of that
  * client had a directory: the SDK subprocess ran in the proxy's own, and the
- * prompt told the model the client's was unknown (#744 is what follows).
+ * prompt told the model the client's was unknown, so the model composed paths
+ * against the proxy's tree.
  *
  * The first block of the conversation is the one. The SDK session is filed
  * under the directory it was created in, so a conversation whose directory
