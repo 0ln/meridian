@@ -7,6 +7,7 @@ import { basename, isAbsolute, join } from "node:path"
 import { createSdkProcessGate, getSdkGateNodeExecutable } from "../proxy/session/sdkProcessGate"
 import * as processIncarnation from "../proxy/session/processIncarnation"
 import { captureProcessIncarnation, type ProcessIncarnation } from "../proxy/session/processIncarnation"
+import { onPlatform, stubProbeExecFile } from "./processProbeStubs"
 
 describe("SDK process gate", () => {
   const roots: string[] = []
@@ -62,6 +63,41 @@ describe("SDK process gate", () => {
       synchronous.mockRestore()
     }
     expect(gate.executor.pid).toBeGreaterThan(0)
+    expect(await gate.closeAndJoin()).toBe(true)
+  })
+
+  // CI runs this suite on Linux, where the capture reads /proc. This drives
+  // the darwin capture, a ps child process, with execFile stubbed.
+  it("awaits the wrapper's ps probe on darwin while the event loop runs", async () => {
+    // The wrapper itself is spawned for the stubbed platform: POSIX only.
+    if (process.platform === "win32") return
+    const root = mkdtempSync(join(tmpdir(), "meridian-sdk-gate-"))
+    roots.push(root)
+    expect(captureProcessIncarnation()).toBeDefined()
+    const darwinStart = "Mon Jan  5 03:04:05 2026"
+    const probe = stubProbeExecFile()
+    const synchronous = spyOn(childProcess, "spawnSync")
+    let gate: Awaited<ReturnType<typeof createSdkProcessGate>> | undefined
+    try {
+      gate = await onPlatform("darwin", async () => {
+        let settled = false
+        const opening = createSdkProcessGate(root, async () => undefined).finally(() => { settled = true })
+        await new Promise(resolve => setTimeout(resolve, 20))
+        expect(settled).toBe(false)
+        expect(probe.calls).toHaveLength(1)
+        const call = probe.calls[0]!
+        expect(call.file).toBe("/bin/ps")
+        expect(call.args.slice(2)).toEqual(["-o", "lstart="])
+        call.answer(0, `${darwinStart}\n`)
+        return opening
+      })
+      expect(synchronous).not.toHaveBeenCalled()
+    } finally {
+      synchronous.mockRestore()
+      probe.restore()
+    }
+    expect(probe.calls[0]!.args.slice(0, 2)).toEqual(["-p", String(gate.executor.pid)])
+    expect(gate.executor).toMatchObject({ startId: darwinStart, startIdKind: "darwin-ps-lstart" })
     expect(await gate.closeAndJoin()).toBe(true)
   })
 

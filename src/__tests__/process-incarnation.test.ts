@@ -16,6 +16,7 @@ import {
   type LocalBootIdentity,
   type ProcessIncarnation,
 } from "../proxy/session/processIncarnation"
+import { onPlatform, stubProbeExecFile, type StubbedProbeCall } from "./processProbeStubs"
 
 const hostId = "a".repeat(64)
 const otherHostId = "b".repeat(64)
@@ -228,6 +229,80 @@ describe("awaited process probe deadline", () => {
       rmSync(root, { recursive: true, force: true })
     }
   }, 25_000)
+})
+
+// CI runs the unit suite on Linux, where capture reads /proc and no probe runs.
+// These drive the darwin and win32 probes, which are child processes, with
+// execFile stubbed so the probe answers only when the test says so.
+describe("awaited capture through the darwin and win32 probes", () => {
+  const darwinStart = "Mon Jan  5 03:04:05 2026"
+  const windowsTicks = "638712345678901234"
+
+  async function captureOn(
+    platform: NodeJS.Platform,
+    pid: number,
+    respond: (call: StubbedProbeCall) => void,
+  ): Promise<{ captured: ProcessIncarnation | undefined; call: StubbedProbeCall }> {
+    const probe = stubProbeExecFile()
+    const synchronous = spyOn(childProcess, "spawnSync")
+    try {
+      const outcome = await onPlatform(platform, async () => {
+        let settled = false
+        const pending = captureProcessIncarnationAsync(pid).finally(() => { settled = true })
+        // Timers keep firing while the probe is outstanding.
+        await new Promise(resolve => setTimeout(resolve, 20))
+        expect(settled).toBe(false)
+        expect(probe.calls).toHaveLength(1)
+        const call = probe.calls[0]!
+        respond(call)
+        return { captured: await pending, call }
+      })
+      expect(synchronous).not.toHaveBeenCalled()
+      return outcome
+    } finally {
+      synchronous.mockRestore()
+      probe.restore()
+    }
+  }
+
+  it("captures with ps on darwin without holding the event loop", async () => {
+    if (!(["darwin", "linux", "win32"] as string[]).includes(process.platform)) return
+    const host = captureCurrentProcessIncarnation()
+    const pid = process.ppid
+    const { captured, call } = await captureOn("darwin", pid, probe => probe.answer(0, `${darwinStart}\n`))
+    expect(call.file).toBe("/bin/ps")
+    expect(call.args).toEqual(["-p", String(pid), "-o", "lstart="])
+    expect(call.options.env).toMatchObject({ LC_ALL: "C", LANG: "C", TZ: "UTC0" })
+    expect(captured).toEqual({ ...host, pid, startId: darwinStart, startIdKind: "darwin-ps-lstart" })
+  })
+
+  it("captures nothing when ps on darwin fails", async () => {
+    if (!(["darwin", "linux", "win32"] as string[]).includes(process.platform)) return
+    captureCurrentProcessIncarnation()
+    const { captured } = await captureOn("darwin", process.ppid, probe => probe.answer(1, ""))
+    expect(captured).toBeUndefined()
+  })
+
+  it("captures with PowerShell on win32 without holding the event loop", async () => {
+    if (!(["darwin", "linux", "win32"] as string[]).includes(process.platform)) return
+    const host = captureCurrentProcessIncarnation()
+    const pid = process.ppid
+    const { captured, call } = await captureOn("win32", pid, probe => probe.answer(0, `${windowsTicks}\r\n`))
+    expect(call.file).toBe("powershell.exe")
+    expect(call.args.slice(0, -1)).toEqual([
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+    ])
+    expect(call.args.at(-1)).toContain(`Get-Process -Id ${pid} -ErrorAction Stop`)
+    expect(call.options.windowsHide).toBe(true)
+    expect(captured).toEqual({ ...host, pid, startId: windowsTicks, startIdKind: "windows-start-ticks" })
+  })
+
+  it("captures nothing when PowerShell on win32 finds no such process", async () => {
+    if (!(["darwin", "linux", "win32"] as string[]).includes(process.platform)) return
+    captureCurrentProcessIncarnation()
+    const { captured } = await captureOn("win32", process.ppid, probe => probe.answer(3, ""))
+    expect(captured).toBeUndefined()
+  })
 })
 
 function processExists(pid: number): boolean {
