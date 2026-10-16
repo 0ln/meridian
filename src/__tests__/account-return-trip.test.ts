@@ -62,6 +62,7 @@ const { createProxyServer, clearSessionCache } = await import("../proxy/server")
 const { resetActiveProfile } = await import("../proxy/profiles")
 const { __setFetchOAuthUsageOverride, resetOAuthUsageCache } = await import("../proxy/oauthUsage")
 const { rateLimitStore } = await import("../proxy/rateLimitStore")
+const { evictSharedSession } = await import("../proxy/sessionStore")
 
 type TestApp = { fetch: (r: Request) => Response | Promise<Response> }
 type Message = { role: "user" | "assistant"; content: string }
@@ -164,6 +165,34 @@ describe("a conversation that moves to another account and comes back", () => {
     expect({ resumedStale, prompt: back.prompt }).toEqual({ resumedStale: false, prompt: expect.stringContaining("FOURTH-QUESTION") })
     expect(back.prompt).toContain("BACKUP-ANSWER-2")
     expect(back.prompt).toContain("BACKUP-ANSWER-3")
+  })
+
+  it("resumes the stale copy it left there when no other account's copy is on record", async () => {
+    // Control: the same trip with `backup`'s mapping gone before the way
+    // back. Nothing says the conversation went on elsewhere, so `work`
+    // resumes the session it left, and the turns taken on `backup` reach
+    // it as a delta of the user's side only. This is what the guard above
+    // prevents while the copy elsewhere is still kept.
+    const app = createApp()
+    await setActive(app, "work")
+    const history: Message[] = [{ role: "user", content: "FIRST-QUESTION" }]
+    await turn(app, "rt-control", history)
+    const workSession = seen.at(-1)!.target
+    await setActive(app, "backup")
+    history.push({ role: "assistant", content: "WORK-ANSWER-1" }, { role: "user", content: "SECOND-QUESTION" })
+    await turn(app, "rt-control", history)
+    history.push({ role: "assistant", content: "BACKUP-ANSWER-2" }, { role: "user", content: "THIRD-QUESTION" })
+    await turn(app, "rt-control", history)
+    expect(evictSharedSession("backup:rt-control")).toBe(true)
+    await setActive(app, "work")
+    history.push({ role: "assistant", content: "BACKUP-ANSWER-3" }, { role: "user", content: "FOURTH-QUESTION" })
+    await turn(app, "rt-control", history)
+    const back = seen.at(-1)!
+    expect(back.dir).toContain("work")
+    expect(back.resume).toBe(workSession)
+    expect(back.prompt).toContain("FOURTH-QUESTION")
+    expect(back.prompt).not.toContain("BACKUP-ANSWER-2")
+    expect(back.prompt).not.toContain("BACKUP-ANSWER-3")
   })
 
   // A client that sends no session key is keyed by its conversation's
