@@ -168,11 +168,13 @@ describe("a conversation that moves to another account and comes back", () => {
   })
 
   it("resumes the stale copy it left there when no other account's copy is on record", async () => {
-    // Control: the same trip with `backup`'s mapping gone before the way
-    // back. Nothing says the conversation went on elsewhere, so `work`
+    // Control: the same trip with `backup`'s newer mapping explicitly
+    // evicted before the way back. Nothing says the conversation went on elsewhere, so `work`
     // resumes the session it left, and the turns taken on `backup` reach
     // it as a delta of the user's side only. This is what the guard above
-    // prevents while the copy elsewhere is still kept.
+    // prevents while the copy elsewhere is still present and readable.
+    // Pruning and expiry differ: they drop the older copy here first, so
+    // the way back replays instead.
     const app = createApp()
     await setActive(app, "work")
     const history: Message[] = [{ role: "user", content: "FIRST-QUESTION" }]
