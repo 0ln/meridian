@@ -46,7 +46,7 @@ describe("SDK process gate", () => {
   // Every request opens a gate. A synchronous probe of the wrapper held every
   // other request while it ran, and gave up after 2 s: on a host loaded near
   // 40, a request failed before any call with "cannot capture SDK writer
-  // process incarnation" (E84).
+  // process incarnation".
   it("captures the wrapper's incarnation without holding the event loop", async () => {
     const root = mkdtempSync(join(tmpdir(), "meridian-sdk-gate-"))
     roots.push(root)
