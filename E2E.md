@@ -5276,23 +5276,24 @@ OpenCode executable or naturally exhausted-account evidence. Real affected-clien
 acceptance, actual model identity and four-mode E41 remain separate gates. Do not
 use fixtures as substitutes or enable paid usage to manufacture a refusal.
 
-## E87: A client that goes away stops the model
+## Priority-routed cancel stops the model (E87)
 
-**What it proves:** a client that cancels a request, or goes away, stops the
-model, under manual routing and under active+priority. Before, under
-active+priority, a client that went before the first byte of output left the
-SDK child running to the end of its turn, on the account's allowance. That is
-Esc on a turn still thinking, or an orchestrator cancelling subagents still
-queued for an SDK slot or starting their CLI.
+**What it proves:** a request routed by `active+priority` is stopped at the
+model when its client cancels or goes away, when the session-turn watchdog
+fires, or when a parent session's cancellation or shutdown reaches it, as a
+request under manual routing already was. Before, every priority attempt
+adopted the request's abort link and the handler detached it on return; the
+priority dispatch returns from inside that handler, so the link was detached
+before the first attempt ran, and none of those aborts reached the SDK child.
+It ran on to the end of its turn, on the account's allowance. Now only the
+handler that made a link detaches it; the request's own link is detached once
+the request is over.
 
-Every attempt of a priority-routed request adopts the request's abort link,
-which hears the client go, the turn watchdog, a parent's cancellation and
-shutdown. The handler's last `finally` detached the link whether it had made
-it or adopted it. The priority dispatch returns from inside that `try`, so the
-link was detached before the first attempt ran. Now only the handler that made
-a link detaches it; the outer handler detaches the request's own once the
-request is over. A streaming client that had already read bytes stopped the
-model before too, by cancelling the body.
+On current main a priority-routed stream sends its headers before an account
+answers, so a streaming client that goes away is also seen by its response
+body being cancelled, which stopped the model before this fix too. What was
+still deaf: a non-streaming client going away, the session-turn watchdog,
+subtree cancellation and shutdown.
 
 ### Run it
 
@@ -5301,36 +5302,54 @@ bun test src/__tests__/priority-client-cancel.test.ts               # HTTP, mock
 npm run build && bun scripts/e2e-claude-code-priority-cancel.mjs   # real client, built proxy under Node, SDK and CLI; scripted API; no model calls
 ```
 
-The gate's scripted API holds each turn's first byte for 20 s. Once the SDK
-child's turn reaches it, the client is killed, and the gate waits for every
-request the SDK child has open there to close. `CANCEL_GATE_SERVER` names
-another build's `dist/server.js`, to run the gate against older code.
+The gate's scripted API holds each turn's first byte for 20 s. Its client legs
+kill the client once the SDK child's turn reaches the API; its watchdog legs
+keep the client and give the proxy a 4 s session-turn hold. Each leg waits for
+every request the SDK child had open there to close. `CANCEL_GATE_SERVER`
+names another build's `dist/server.js`, to run the gate against older code.
 
 ### Verified
 
-HTTP, mocked SDK (`priority-client-cancel.test.ts`): a plain request, a
-streaming one before its first byte, and one on the account a failover
-reached. Each turn ran its full 3 s before the fix and is stopped at the
-cancel after it. `account-return-trip.test.ts` also holds a carry cancelled
-under priority routing to end at the cancel.
+2026-10-16, Linux x64, Bun 1.3.14, Node 22.13.0, against the server of
+current main (ca716c36) and of this change.
 
-2026-10-06, client 2.1.291, the proxy built and run under Node as
-`npm run start` runs it:
+HTTP, mocked SDK (`priority-client-cancel.test.ts`, 3 s turns): a plain
+request, a streaming one cancelled before its first byte, one on the account a
+failover reached, a turn the watchdog stops, and a manual-routing control.
+Main: 1 pass, 4 fail (only the control passes; each priority turn runs its
+full 3 s). This change: 5 pass.
 
-| Routing | Before (48f7825) | After |
+Offline gate, Claude Code 2.1.301 as the client, scripted API:
+
+| Leg | main (ca716c36) | This change |
 |---|---|---|
-| manual | closed 1,524 ms after the client went | closed 1,514 ms after |
-| active+priority | 2 requests still open 20 s later | closed 28 ms after |
+| manual, client killed | closed 1,487 ms after | closed 1,487 ms after |
+| active+priority, client killed | closed 1,484 ms after | closed 1,523 ms after |
+| manual, 4 s watchdog | closed 3,147 ms after | closed 3,326 ms after |
+| active+priority, 4 s watchdog | 1 request still open 20 s later | closed 3,202 ms after |
 
-The parallel-subagents gate (E84) with `PROFILES=2` and active+priority, so
-that every request goes through priority dispatch, passed with 4 subagents.
+The source runs of this gate (macOS, Claude CLI 2.1.284–2.1.294, on the source
+branch before main's streaming priority relay) were not re-run against this
+build. They recorded the client-killed active+priority leg leaving 2 requests
+open 20 s later before the fix and closing 28 ms after it.
+
+### Live evidence owed
+
+- A real account pool under `active+priority`: Esc on a Claude Code turn still
+  thinking, and a non-streaming client that goes away, each stopping the model
+  (no further output tokens billed after the cancel).
+- An orchestrator cancelling priority-routed subagents still queued for an SDK
+  slot or starting their CLI.
+- The session-turn watchdog stopping a priority-routed turn against a real
+  model.
+- The affected platforms the source ran on (macOS) and Linux.
 
 ### Not covered
 
 - The proxy run under Bun (`bun run ./bin/cli.ts`, which the supervisor uses
-  only when there is no build): @hono/node-server under Bun 1.3.14 is never
-  told of a client that goes before the response's first byte, so no routing
-  mode stops the model then.
+  only when there is no build): @hono/node-server under Bun is never told of a
+  client that goes before the response's first byte, so no routing mode stops
+  the model then.
 - Live accounts: the gate shows the SDK child's API request closed, not an
   account's usage.
 
