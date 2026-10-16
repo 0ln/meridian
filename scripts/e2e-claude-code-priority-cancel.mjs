@@ -11,6 +11,14 @@
 // attempt detached the request's abort link as it returned and the model ran
 // on to the end of its turn.
 //
+// A priority-routed stream now sends its headers before an account answers,
+// so a client killed then is also seen by the response body being cancelled,
+// and those two legs pass without the fix as well. The watchdog legs are the
+// ones that tell: the client stays, the session-turn watchdog
+// (MERIDIAN_SESSION_TURN_MAX_HOLD_MS, set to WATCHDOG_MS) fires, and the SDK
+// child's request must close within a few seconds of it. The watchdog aborts
+// only through the request's abort link, so a detached link leaves it open.
+//
 // The proxy is the built one under Node, as `npm run start` runs it: under
 // Bun, @hono/node-server is never told of a client that leaves before the
 // response's first byte, so no routing mode would see it go. Build first.
@@ -43,6 +51,8 @@ const MODEL = process.argv[2] ?? "claude-sonnet-5-5"
 const HOLD_MS = 20_000
 /** How soon after the client goes the SDK child's requests must be closed. */
 const STOP_WITHIN_MS = 5_000
+/** The session-turn hold the watchdog legs give the proxy. */
+const WATCHDOG_MS = 4_000
 const root = realpathSync(mkdtempSync(join(tmpdir(), "meridian-cancel-")))
 const work = join(root, "work")
 mkdirSync(work)
@@ -79,16 +89,19 @@ function check(ok, label, detail) {
   if (!ok) failures.push(label)
 }
 
-async function cancelUnder(routing) {
+/** `how`: "client" kills the client once the turn reaches the API; "watchdog" leaves it to the session-turn watchdog. */
+async function cancelUnder(routing, how) {
   calls = []
+  const leg = `${routing}-${how}`
   const proxyEnv = { ...process.env }
   for (const key of Object.keys(proxyEnv)) if (key.startsWith("MERIDIAN_") || key.startsWith("CLAUDE_PROXY_")) delete proxyEnv[key]
   Object.assign(proxyEnv, {
     CANCEL_GATE_ROLE: "proxy", CANCEL_GATE_SERVER: SERVER, CANCEL_GATE_UPSTREAM: `http://127.0.0.1:${upstream.port}`,
     MERIDIAN_ROUTING: routing, MERIDIAN_PROFILE_ORDER: "first,second",
-    MERIDIAN_CONFIG_DIR: join(root, `config-${routing}`), MERIDIAN_SESSION_DIR: join(root, `sessions-${routing}`),
-    MERIDIAN_TELEMETRY_PERSIST: "0", CLAUDE_CONFIG_DIR: join(root, `claude-config-${routing}`),
+    MERIDIAN_CONFIG_DIR: join(root, `config-${leg}`), MERIDIAN_SESSION_DIR: join(root, `sessions-${leg}`),
+    MERIDIAN_TELEMETRY_PERSIST: "0", CLAUDE_CONFIG_DIR: join(root, `claude-config-${leg}`),
   })
+  if (how === "watchdog") proxyEnv.MERIDIAN_SESSION_TURN_MAX_HOLD_MS = String(WATCHDOG_MS)
   const proxy = Bun.spawn(["node", import.meta.path], { cwd: process.cwd(), env: proxyEnv, stdout: "pipe", stderr: "pipe" })
   const reader = proxy.stdout.getReader()
   let output = ""
@@ -104,33 +117,48 @@ async function cancelUnder(routing) {
   }
   const clientEnv = { ...process.env }
   for (const key of Object.keys(clientEnv)) if (/^CLAUDE(CODE|_)|^ANTHROPIC_|^MERIDIAN_|^CANCEL_GATE_|^ENABLE_/.test(key)) delete clientEnv[key]
-  Object.assign(clientEnv, { CLAUDE_CONFIG_DIR: join(root, `client-config-${routing}`), ANTHROPIC_BASE_URL: proxyUrl,
+  Object.assign(clientEnv, { CLAUDE_CONFIG_DIR: join(root, `client-config-${leg}`), ANTHROPIC_BASE_URL: proxyUrl,
     ANTHROPIC_AUTH_TOKEN: "meridian-e2e-dummy", DISABLE_AUTOUPDATER: "1" })
   const client = Bun.spawn([CLIENT, "-p", "--model", MODEL, "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
     "--setting-sources", "", "Say hello."], { cwd: work, env: clientEnv, stdout: "pipe", stderr: "pipe" })
   const deadline = Date.now() + 60_000
   while (!calls.some(call => call.stream) && Date.now() < deadline) await Bun.sleep(50)
   const reached = calls.some(call => call.stream)
-  const killedAt = Date.now()
-  client.kill("SIGKILL")
-  await client.exited
-  const open = () => calls.filter(call => call.closedAt === undefined)
-  while (reached && open().length > 0 && Date.now() - killedAt < HOLD_MS) await Bun.sleep(50)
-  const stoppedAfterMs = reached && open().length === 0 ? Math.max(0, ...calls.map(call => call.closedAt - killedAt)) : null
+  const startedAt = Date.now()
+  // A client the watchdog cut off may ask again; only the requests open
+  // when the turn reached the API are this turn's.
+  const watched = [...calls]
+  if (how === "client") {
+    client.kill("SIGKILL")
+    await client.exited
+  }
+  const open = () => watched.filter(call => call.closedAt === undefined)
+  while (reached && open().length > 0 && Date.now() - startedAt < HOLD_MS) await Bun.sleep(50)
+  const stoppedAfterMs = reached && open().length === 0 ? Math.max(0, ...watched.map(call => call.closedAt - startedAt)) : null
   const stillOpen = open().length
+  if (how === "watchdog") {
+    client.kill("SIGKILL")
+    await client.exited
+  }
   proxy.kill()
   await proxy.exited
   return { reached, requests: calls.length, stillOpen, stoppedAfterMs }
 }
 
 try {
-  console.log(`\n=== a client that goes away before any output, ${MODEL}, proxy ${SERVER} under Node ===`)
-  for (const routing of ["manual", "active+priority"]) {
-    const result = await cancelUnder(routing)
-    check(result.reached, `${routing}: the SDK child's turn reaches the API`, result.detail ?? `${result.requests} request(s)`)
-    if (!result.reached) continue
-    check(result.stoppedAfterMs !== null && result.stoppedAfterMs <= STOP_WITHIN_MS, `${routing}: the model is stopped once the client goes`,
-      result.stoppedAfterMs === null ? `${result.stillOpen} request(s) still open ${HOLD_MS / 1000} s later` : `closed ${result.stoppedAfterMs} ms after`)
+  console.log(`\n=== a turn stopped before any output, ${MODEL}, proxy ${SERVER} under Node ===`)
+  for (const how of ["client", "watchdog"]) {
+    // The client's leg counts from the kill; the watchdog's from the turn
+    // reaching the API, after the watchdog was armed.
+    const within = how === "client" ? STOP_WITHIN_MS : WATCHDOG_MS + STOP_WITHIN_MS
+    const label = how === "client" ? "once the client goes" : `by the ${WATCHDOG_MS / 1000} s session-turn watchdog`
+    for (const routing of ["manual", "active+priority"]) {
+      const result = await cancelUnder(routing, how)
+      check(result.reached, `${routing}, ${how}: the SDK child's turn reaches the API`, result.detail ?? `${result.requests} request(s)`)
+      if (!result.reached) continue
+      check(result.stoppedAfterMs !== null && result.stoppedAfterMs <= within, `${routing}, ${how}: the model is stopped ${label}`,
+        result.stoppedAfterMs === null ? `${result.stillOpen} request(s) still open ${HOLD_MS / 1000} s later` : `closed ${result.stoppedAfterMs} ms after`)
+    }
   }
 } finally {
   upstream.stop(true)
