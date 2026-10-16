@@ -408,23 +408,41 @@ still starting) runs on to the end of its turn, on the account's allowance.
 Under Node it stops. Serving with `Bun.serve` instead would change the `server`
 that `startProxyServer` hands to its callers, so this change only warns:
 `runtimeCancelWarning.ts` prints one `console.warn` line after the startup
-banner when `process.versions.bun` is set, naming the Bun version and
-`npm run build && npm run start` as the way out. The supervisor already runs
-the build under Node and uses the source under Bun only when there is no build.
+banner when `process.versions.bun` is set. The line names the running Bun, the
+Bun releases the behaviour was checked on (1.2.20, 1.3.11, 1.3.14), and the way
+out for both installs: `npm run build && npm run start` from a source checkout,
+or `meridian` started with Node (not `bunx --bun`) from an npm install. It
+prints on any Bun, including the documented `npm run proxy:direct` dev start,
+and never when the proxy is started silently. The supervisor already runs the
+build under Node and uses the source under Bun only when there is no build.
 
-**Unit coverage:** `runtime-cancel-warning.test.ts` (the warning names the Bun
-version, the cost and the remedy; it is absent under Node).
+**Unit coverage:** `runtime-cancel-warning.test.ts` (the warning names the
+running Bun, the probed releases, the cost and both remedies; it is absent
+under Node).
 
-**Source evidence (not re-run here):** the contributor probed the missed
-disconnect on 2026-10-06 on macOS with Bun 1.3.14 and Claude CLI
-2.1.284–2.1.294, through a client-cancel gate that is not part of this change:
-under Bun no routing mode stopped the SDK child when the client went before the
-first byte, while the built proxy under Node with manual routing closed the SDK
-child's API request about 1.5 s after the client went.
+**Offline checks (this build, Linux x64, no credentials, no requests):**
+
+- Startup with an empty `HOME` and `CLAUDE_CONFIG_DIR` on loopback, stopped
+  with SIGINT after 25 s: `bun run ./bin/cli.ts` under Bun 1.3.14 prints the
+  warning right after the `Build:` line; `node dist/cli.js` (what the
+  `meridian` bin runs) under Node 22.13.0 prints none.
+- A bare `node:http` server with a raw TCP client that sends a request and
+  drops the socket after 300 ms without a response: under Bun 1.2.20, 1.3.11
+  and 1.3.14 no `req`, `res` or socket `close` fires within 2 s; under Node
+  22.13.0 all three fire at about 310 ms. This checks the premise at the
+  `node:http` level only, not through the proxy.
+
+**Source evidence (not re-run against this build):** the contributor probed
+the missed disconnect through the proxy on 2026-10-06 on macOS with Bun 1.3.14
+and Claude CLI 2.1.284–2.1.294, through a client-cancel gate that is not part
+of this change: under Bun no routing mode stopped the SDK child when the client
+went before the first byte, while the built proxy under Node with manual
+routing closed the SDK child's API request about 1.5 s after the client went.
 
 **Not covered:** the underlying cancellation under Bun is not fixed; the
-warning only reports it. No Linux or Windows run of the probe exists, and the
-warning's text was checked by unit test, not by starting a proxy here.
+warning only reports it. Live evidence owed: a run through the proxy with a
+real client cancel on the current Bun (and any Bun 1.4.x in use, where the
+claim is unchecked), on Linux and on Windows. No model calls were made here.
 
 ## Antigravity subscription CLI backend
 
