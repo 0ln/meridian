@@ -3,7 +3,8 @@
  *
  * Every attempt of a priority-routed request adopts the request's abort link,
  * which hears the client go away, the turn watchdog, a parent's cancellation
- * and shutdown. Only the outer handler, once the request is over, detaches it.
+ * and shutdown. Only the admission owner, once the request is over, detaches
+ * it.
  * An attempt that detached it as it returned left the rest of the
  * request deaf: the client was gone and the model went on to the end of its
  * turn, on the account's allowance. A streaming client that had already
@@ -94,15 +95,51 @@ async function until(condition: () => boolean, timeoutMs = 1000): Promise<void> 
   }
 }
 
-/** Send one request to a fresh proxy with two accounts, `work` first. */
-function startRequest(stream: boolean, session: string, signal?: AbortSignal): Promise<Response> {
+/** A fresh proxy with two accounts, `work` first. */
+function startProxy(): ReturnType<typeof createProxyServer> {
   const profiles = ["work", "spare"].map(id => ({ id, claudeConfigDir: join(root, id) }))
-  const app = createProxyServer({ port: 0, host: "127.0.0.1", profiles, defaultProfile: "work" }).app
+  return createProxyServer({ port: 0, host: "127.0.0.1", profiles, defaultProfile: "work" })
+}
+
+/** Send one request to a fresh proxy. */
+function startRequest(stream: boolean, session: string, signal?: AbortSignal): Promise<Response> {
+  return sendTo(startProxy().app, { "x-opencode-session": session }, { stream, signal, messages: [{ role: "user", content: "a long task" }] })
+}
+
+/**
+ * Send one request from a session of a client that names its parent session
+ * in its identity envelope, as a subagent's client does.
+ */
+function sendFromSession(
+  app: ReturnType<typeof createProxyServer>["app"],
+  session: string,
+  options: { signal?: AbortSignal; parent?: string } = {},
+): Promise<Response> {
+  const identity: Record<string, string> = { session_id: session }
+  if (options.parent) identity.parent_session_id = options.parent
+  return sendTo(app, { "x-meridian-agent": "prime" }, {
+    signal: options.signal,
+    messages: [{ role: "user", content: `a long task for ${session}` }],
+    metadata: { user_id: JSON.stringify(identity) },
+  })
+}
+
+function sendTo(
+  app: ReturnType<typeof createProxyServer>["app"],
+  headers: Record<string, string>,
+  options: { stream?: boolean; signal?: AbortSignal; messages: unknown[]; metadata?: Record<string, string> },
+): Promise<Response> {
   return Promise.resolve(app.fetch(new Request("http://localhost/v1/messages", {
     method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json", "x-opencode-session": session },
-    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 64, stream, messages: [{ role: "user", content: "a long task" }] }),
+    signal: options.signal,
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5",
+      max_tokens: 64,
+      stream: options.stream ?? false,
+      messages: options.messages,
+      ...(options.metadata ? { metadata: options.metadata } : {}),
+    }),
   })))
 }
 
@@ -161,6 +198,41 @@ describe("a client that cancels a request routed by priority", () => {
     expect(turns).toHaveLength(1)
     expect(turns[0]?.aborted).toBe(true)
     expect(Date.now() - startedAt).toBeLessThan(2000)
+  })
+
+  it("lets a parent session's cancellation stop a child's model turn", async () => {
+    // The child's own client stays. Only the parent goes away, and the session
+    // tree aborts the child through its request-wide link.
+    const proxy = startProxy()
+    const parentCancel = new AbortController()
+    const parent = sendFromSession(proxy.app, "subtree-parent", { signal: parentCancel.signal })
+    await until(() => turns.length === 1, 10_000)
+    const child = sendFromSession(proxy.app, "subtree-child", { parent: "subtree-parent" })
+    await until(() => turns.length === 2, 10_000)
+    const childTurn = turns[1]
+    const cancelledAt = Date.now()
+    parentCancel.abort()
+    let stopped = true
+    await until(() => childTurn?.aborted === true, 500).catch(() => { stopped = false })
+    await drain(child)
+    expect(stopped).toBe(true)
+    expect(Date.now() - cancelledAt).toBeLessThan(1500)
+    await drain(parent)
+  })
+
+  it("lets shutdown stop the model", async () => {
+    // The client stays. The shutdown grace period ending aborts every request
+    // in flight through its request-wide link.
+    const proxy = startProxy()
+    const pending = sendTo(proxy.app, { "x-opencode-session": "shutdown-plain" }, { messages: [{ role: "user", content: "a long task" }] })
+    await until(() => turns.length > 0, 10_000)
+    const abortedAt = Date.now()
+    proxy.forceAbortInFlight?.()
+    let stopped = true
+    await until(() => turns[0]?.aborted === true, 500).catch(() => { stopped = false })
+    await drain(pending)
+    expect(stopped).toBe(true)
+    expect(Date.now() - abortedAt).toBeLessThan(1500)
   })
 })
 
