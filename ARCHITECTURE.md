@@ -493,8 +493,8 @@ Every priority attempt adopts the request's one abort link, which carries the
 client going away, the session-turn watchdog, subtree cancellation and
 shutdown to the SDK child. `handleMessages` detaches only a link it made
 itself; the admission owner detaches the request's link once the request is
-over. The dispatch returns from the handler before its attempts run, so a
-detach on return would leave every later attempt deaf to all four.
+over. The dispatch returns from the handler while its attempts are still
+running, so a detach on return would leave them deaf to all four.
 
 **A `[1m]` bench is scoped to whatever actually failed.** Extra Usage exhaustion
 is an entitlement fact about the account, so it benches the whole profile. A

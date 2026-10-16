@@ -5284,7 +5284,8 @@ fires, or when a parent session's cancellation or shutdown reaches it, as a
 request under manual routing already was. Before, every priority attempt
 adopted the request's abort link and the handler detached it on return; the
 priority dispatch returns from inside that handler, so the link was detached
-before the first attempt ran, and none of those aborts reached the SDK child.
+while the first attempt was still running, and none of those aborts reached the
+SDK child.
 It ran on to the end of its turn, on the account's allowance. Now only the
 handler that made a link detaches it; the request's own link is detached once
 the request is over.
@@ -5315,9 +5316,12 @@ current main (ca716c36) and of this change.
 
 HTTP, mocked SDK (`priority-client-cancel.test.ts`, 3 s turns): a plain
 request, a streaming one cancelled before its first byte, one on the account a
-failover reached, a turn the watchdog stops, and a manual-routing control.
-Main: 1 pass, 4 fail (only the control passes; each priority turn runs its
-full 3 s). This change: 5 pass.
+failover reached, a turn the watchdog stops, a child turn its parent session's
+cancellation stops, a turn shutdown stops, and a manual-routing control. Main:
+1 pass, 6 fail (only the control passes; each priority turn runs its full
+3 s). This change: 7 pass. The offline gate below runs only the client and
+watchdog legs; subtree cancellation and shutdown are shown with the mocked SDK
+only.
 
 Offline gate, Claude Code 2.1.301 as the client, scripted API:
 
@@ -5328,10 +5332,10 @@ Offline gate, Claude Code 2.1.301 as the client, scripted API:
 | manual, 4 s watchdog | closed 3,147 ms after | closed 3,326 ms after |
 | active+priority, 4 s watchdog | 1 request still open 20 s later | closed 3,202 ms after |
 
-The source runs of this gate (macOS, Claude CLI 2.1.284–2.1.294, on the source
-branch before main's streaming priority relay) were not re-run against this
-build. They recorded the client-killed active+priority leg leaving 2 requests
-open 20 s later before the fix and closing 28 ms after it.
+The source run of this gate (2026-10-06, client 2.1.291, platform not
+recorded, on the source branch before main's streaming priority relay) was not
+re-run against this build. It recorded the client-killed active+priority leg
+leaving 2 requests open 20 s later before the fix and closing 28 ms after it.
 
 ### Live evidence owed
 
@@ -5342,14 +5346,14 @@ open 20 s later before the fix and closing 28 ms after it.
   slot or starting their CLI.
 - The session-turn watchdog stopping a priority-routed turn against a real
   model.
-- The affected platforms the source ran on (macOS) and Linux.
+- macOS (the contributor's platform) and Linux.
 
 ### Not covered
 
 - The proxy run under Bun (`bun run ./bin/cli.ts`, which the supervisor uses
-  only when there is no build): @hono/node-server under Bun is never told of a
-  client that goes before the response's first byte, so no routing mode stops
-  the model then.
+  only when there is no build): @hono/node-server under Bun 1.3.14 (source
+  observation, not re-checked here) is never told of a client that goes before
+  the response's first byte, so no routing mode stops the model then.
 - Live accounts: the gate shows the SDK child's API request closed, not an
   account's usage.
 

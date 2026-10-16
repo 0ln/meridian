@@ -20,8 +20,9 @@
 // only through the request's abort link, so a detached link leaves it open.
 //
 // The proxy is the built one under Node, as `npm run start` runs it: under
-// Bun, @hono/node-server is never told of a client that leaves before the
-// response's first byte, so no routing mode would see it go. Build first.
+// Bun 1.3.14 (source observation, not re-checked here), @hono/node-server is
+// never told of a client that leaves before the response's first byte, so no
+// routing mode would see it go. Build first.
 //
 //   npm run build && bun scripts/e2e-claude-code-priority-cancel.mjs [model]
 //
