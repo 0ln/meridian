@@ -5,6 +5,7 @@ import { open, type FileHandle } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, isAbsolute, join } from "node:path"
 import { createSdkProcessGate, getSdkGateNodeExecutable } from "../proxy/session/sdkProcessGate"
+import * as processIncarnation from "../proxy/session/processIncarnation"
 import { captureProcessIncarnation, type ProcessIncarnation } from "../proxy/session/processIncarnation"
 
 describe("SDK process gate", () => {
@@ -62,6 +63,32 @@ describe("SDK process gate", () => {
     }
     expect(gate.executor.pid).toBeGreaterThan(0)
     expect(await gate.closeAndJoin()).toBe(true)
+  })
+
+  // The capture is awaited, so the wrapper can die and be reaped while it runs,
+  // and its pid can be reused: the capture may then describe another process.
+  it("refuses a capture that finished after its wrapper exited", async () => {
+    const root = mkdtempSync(join(tmpdir(), "meridian-sdk-gate-"))
+    roots.push(root)
+    const host = captureProcessIncarnation()
+    expect(host).toBeDefined()
+    const capture = spyOn(processIncarnation, "captureProcessIncarnationAsync")
+      .mockImplementation(async (pid) => {
+        process.kill(pid, "SIGKILL")
+        await waitUntilReaped(pid, 5_000)
+        // What a probe of a reused pid would answer.
+        return { ...host!, pid }
+      })
+    const attached: ProcessIncarnation[] = []
+    try {
+      await expect(createSdkProcessGate(root, async (executor) => { attached.push(executor) }))
+        .rejects.toThrow("cannot capture SDK writer process incarnation")
+      expect(capture).toHaveBeenCalledTimes(1)
+    } finally {
+      capture.mockRestore()
+    }
+    expect(attached).toEqual([])
+    expect(readdirSync(root)).toEqual([])
   })
 
   it("drains large stderr output and forwards it without stalling stdout", async () => {
@@ -258,4 +285,23 @@ async function replaceFileHandleSync(
     return replacement(() => sync.call(this))
   }
   return () => { prototype.sync = sync }
+}
+
+/** True once the pid is gone, which on POSIX means its parent reaped it. */
+async function waitUntilReaped(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = performance.now() + timeoutMs
+  while (performance.now() < deadline) {
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ESRCH") {
+        // Let the runtime deliver the exit it recorded while reaping.
+        await new Promise(resolve => setTimeout(resolve, 50))
+        return true
+      }
+      throw error
+    }
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  return false
 }

@@ -246,7 +246,11 @@ export async function createSdkProcessGate(
     if (!child.pid) throw new Error("SDK gate process has no PID")
     // Awaited: other requests stream while the wrapper is probed.
     const executor = await captureProcessIncarnationAsync(child.pid)
-    if (!executor) throw new Error("cannot capture SDK writer process incarnation")
+    // The event loop ran during the probe, so a wrapper that died meanwhile
+    // may already be reaped and its pid reused: the capture could then
+    // describe another process. Node records the exit when it reaps.
+    const wrapperExited = hasClosed || child.exitCode !== null || child.signalCode !== null
+    if (!executor || wrapperExited) throw new Error("cannot capture SDK writer process incarnation")
     await attachExecutor(executor, recoverableAfterCrash)
     attached = true
 
