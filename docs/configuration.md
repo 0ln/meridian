@@ -1069,6 +1069,7 @@ Every request line carries `lineage=`, and every divergence also carries
 | `undo-gap` | An undo whose rollback point would omit supplied history |
 | `unrelated-history` | The key resolved to a different conversation |
 | `missing-session-header` | An OpenCode request arrived without its session header |
+| `moved-on-elsewhere` | Another profile's copy, used since, holds more of the history; this profile's older copy would drop the replies given there, so the turn replays |
 | `concurrent-race`, `priority-failback` | Lost a commit race; routed to another profile |
 | `independent-request:headerless-tool-result` | The client-driven tool loop above |
 | `independent-request:fork-source` | Declared `x-meridian-source: fork-*` |

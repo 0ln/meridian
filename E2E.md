@@ -7996,19 +7996,34 @@ and the `backup` answers are missing from what the model is sent. With the
 guard's `if` disabled, the keyed and fingerprint trips fail the same way.
 
 Live procedure, two owned profiles `<profile-a>` and `<profile-b>`, `active`
-routing, one client conversation:
+routing:
 
-1. Turn 1 on `<profile-a>`. Switch to `<profile-b>`; turns 2 and 3, asking the
-   model to state a random token in each answer.
+1. In a new client conversation, turn 1 on `<profile-a>`. Switch to
+   `<profile-b>`; turns 2 and 3, asking the model to state a random token in
+   each answer.
 2. Switch back to `<profile-a>`; turn 4 asks for both tokens.
 3. Pass: turn 4's request line shows `profile=<profile-a>`, `lineage=new` and
    `diverged=moved-on-elsewhere`, one SDK query, and the answer gives both
    tokens. Turn 3 (still on `<profile-b>`) shows `lineage=continuation`.
-4. Rewind control: on `<profile-a>`, edit turn 2's question in the client. The
-   request resumes `<profile-a>`'s own session (`lineage=continuation`), with
-   no `moved-on-elsewhere`.
+4. Rewind control, as its own conversation: steps 1-3 above replace
+   `<profile-a>`'s copy with the replay, so the copy this control keeps no
+   longer exists there and an edit would test undo on the replayed session
+   (`lineage=undo`). Start a second new conversation: turn 1 on `<profile-a>`,
+   turns 2 and 3 on `<profile-b>`, switch back to `<profile-a>`, and make the
+   first request there an edit of turn 2's question in the client. Pass: the
+   request resumes `<profile-a>`'s original session from turn 1
+   (`lineage=continuation`, same session id as turn 1), with no
+   `moved-on-elsewhere`.
 5. Repeat steps 1-3 with a client that sends no session key (ForgeCode or a
    headerless Pi) to cover the fingerprint lookup.
+
+**Limit:** the guard depends on the other account's newer mapping being present
+and readable. If that mapping is explicitly evicted (as the offline control
+does) or its read fails (a read error counts as no copy), the stale resume
+comes back. Pruning (`MERIDIAN_SESSION_PROFILE_COPY_PRUNE`) and expiry remove
+the older copy, which is the stale one, first, so they lead to a replay rather
+than a stale resume. Do not use eviction, pruning or expiry as a pass path in
+the steps above.
 
 **Evidence status:** the source author's runs (macOS, Claude CLI
 2.1.284–2.1.294) exercised this guard together with a transcript carry that is
