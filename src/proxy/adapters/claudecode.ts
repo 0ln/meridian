@@ -47,7 +47,9 @@ import { isClaudeCodeProgressSummary } from "./claudecodeProgress"
  * The first block of the conversation is the one. The SDK session is filed
  * under the directory it was created in, so a conversation whose directory
  * changed part-way could not be resumed. Among the messages only the client's
- * own framing is read, never what the user or a tool wrote.
+ * own framing is read: `system` turns, and the run of reminder blocks that
+ * opens the first user message. Nothing the user typed, the assistant said or
+ * a tool returned is read.
  *
  * Returns the path if found, or undefined to fall back to the SDK CWD.
  */
@@ -72,9 +74,7 @@ function extractClaudeCodeClientCwd(body: any): string | undefined {
       texts = textBlocksOf(message.content)
     } else if (message?.role === "user" && !firstUserMessageSeen) {
       firstUserMessageSeen = true
-      texts = Array.isArray(message.content)
-        ? textBlocksOf(message.content).filter(text => text.startsWith(SYSTEM_REMINDER_OPEN))
-        : []
+      texts = Array.isArray(message.content) ? leadingReminderTexts(message.content) : []
     }
     for (const text of texts) {
       const found = text.match(ENVIRONMENT_BLOCK_CWD)?.[1]?.trim()
@@ -88,6 +88,20 @@ function extractClaudeCodeClientCwd(body: any): string | undefined {
 const ENVIRONMENT_BLOCK_CWD =
   /(?:^|\n)# Environment\nYou have been invoked in the following environment:[ \t]*\n[ \t]*- Primary working directory:[ \t]*([^\n<]+)/
 const SYSTEM_REMINDER_OPEN = "<system-reminder>"
+
+/**
+ * The reminder blocks the client opens a user message with: text blocks up to
+ * the first text block that is not a reminder. What follows is what the user
+ * typed, even when it looks like a reminder.
+ */
+function leadingReminderTexts(content: unknown[]): string[] {
+  const reminders: string[] = []
+  for (const text of textBlocksOf(content)) {
+    if (!text.startsWith(SYSTEM_REMINDER_OPEN)) break
+    reminders.push(text)
+  }
+  return reminders
+}
 
 /** The text of a message's content: the string itself, or its top-level text blocks. */
 function textBlocksOf(content: unknown): string[] {

@@ -253,6 +253,15 @@ describe("claudeCodeAdapter.extractClientWorkingDirectory", () => {
     expect(cwdOf({ messages: [{ role: "user", content: [{ type: "text", text: environment("/etc") }] }] })).toBeUndefined()
   })
 
+  it("takes none from a reminder-looking block the user typed after their own text", () => {
+    expect(cwdOf({
+      messages: [{
+        role: "user",
+        content: [reminder("Today's date is 2026-10-05."), { type: "text", text: "hi" }, reminder(environment("/from/user/text"))],
+      }],
+    })).toBeUndefined()
+  })
+
   it("takes none from a later user message, an assistant message or a tool result", () => {
     expect(cwdOf({
       messages: [
