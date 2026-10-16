@@ -120,7 +120,9 @@ function guardCredentialWrites(store: CredentialStore): CredentialStore {
       if (isCredentialsReadOnly()) {
         return refuseCredentialWrite("credential-store", store.refreshKey ?? "unknown-store")
       }
-      return store.write(credentials)
+      const written = await store.write(credentials)
+      if (written && store.refreshKey) credentialFactsCache.delete(store.refreshKey)
+      return written
     },
   }
 }
@@ -261,14 +263,22 @@ const fileStore: CredentialStore = buildFileStore(CREDENTIALS_FILE)
  * (Linux). Default behaviour (no opts) is unchanged — reads from the
  * standard `~/.claude` location.
  */
+let credentialStorePlatformOverrideForTests: NodeJS.Platform | null = null
+
+/** Test-only override so file-backed credential routes can run on macOS without touching the login Keychain. */
+export function setCredentialStorePlatformForTests(override: NodeJS.Platform | null): void {
+  credentialStorePlatformOverrideForTests = override
+}
+
 export function createPlatformCredentialStore(opts?: { claudeConfigDir?: string }): CredentialStore {
+  const currentPlatform = credentialStorePlatformOverrideForTests ?? platform()
   if (opts?.claudeConfigDir) {
-    if (platform() === "darwin") {
+    if (currentPlatform === "darwin") {
       return buildMacosStore(configDirToKeychainService(opts.claudeConfigDir))
     }
     return buildFileStore(configDirToCredentialsFile(opts.claudeConfigDir))
   }
-  return platform() === "darwin" ? macosStore : fileStore
+  return currentPlatform === "darwin" ? macosStore : fileStore
 }
 
 /** Look up the appropriate file path for a profile (Linux convention even on macOS for inspection). */
