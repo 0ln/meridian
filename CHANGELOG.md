@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.84.0](https://github.com/rynfar/meridian/compare/meridian-v1.83.1...meridian-v1.84.0) (2026-10-19)
+
+
+### Features
+
+* **profiles:** ?provider= links open / and /profiles on given provider chips ([#1411](https://github.com/rynfar/meridian/issues/1411)) ([58d9dd8](https://github.com/rynfar/meridian/commit/58d9dd8c002cc9f63e966a92770c66bd908f27b5))
+
+
+### Bug Fixes
+
+* forward mid-stream errors on OpenAI chat completions streams ([#1407](https://github.com/rynfar/meridian/issues/1407)) ([6c241a8](https://github.com/rynfar/meridian/commit/6c241a897bdc7ffe4c233d32270a17402b3528a0))
+
 ## [1.83.1](https://github.com/rynfar/meridian/compare/meridian-v1.83.0...meridian-v1.83.1) (2026-10-16)
 
 
