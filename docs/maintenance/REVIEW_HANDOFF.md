@@ -23,7 +23,71 @@ the contributor's PR is what merges:
 Corrections to past PRs (reopening, comment edits, release notes, any rewrite of
 `main`) are the owner's decisions in #1363. Do not start them from this note.
 
-## Backlog review and corrections (2026-10-18 MDT / 2026-10-19 UTC)
+## Overnight goal checkpoint (2026-10-19 MDT)
+
+The six-PR product/test batch ends at `6c241a897bdc7ffe4c233d32270a17402b3528a0`;
+#1421 adds only documentation and manual evidence probes.
+This section supersedes the dated in-progress gates immediately below; the old
+records and failures remain historical evidence. The owner authorized the
+Centeva GPT-6.1-Sol overnight backlog goal. Work stayed in isolated worktrees;
+the user's dirty desktop checkout was preserved. No release, external comment
+or message was published. Full [results, runnable probes and receipts](evidence/backlog-20261019/README.md)
+are escrowed in [#1421](https://github.com/rynfar/meridian/pull/1421).
+
+- **Six landed PRs:** #1415 SDK fixture isolation (`658a3b5c5`), #1411 provider
+  filter URLs (`58d9dd8c0`), #1420 watchdog timer-ownership fixture (`f01ba1ae3`),
+  #1409 owned test temp cleanup (`355f9b34c`), #1398 Bun advisory (`70b5af12a`)
+  and #1407 typed OpenAI stream errors (`6c241a897`). Every exact head passed
+  the complete 24-invocation pinned Bun gate, type/build and required CI.
+  Reviewed/merged trees match. Actual relevant browser/transport/client proof
+  is linked in the results. Original failures are retained, not erased by reruns.
+- **Attribution:** contributor-owned squashes retain contributor Git Authors.
+  #1398 used the approved neutral commit-preserving merge; all eight introduced
+  objects remain unchanged/reachable. The post-batch audit adds no maintainer
+  re-land defect. The 137 legacy cases under #1363 remain owner decisions.
+- **More branches advanced:** #1406 `c8bab07d0` now has truthful settings UI,
+  native fresh/resumed contamination controls, desktop/mobile browser proof,
+  and 6,984 pass / 36 skip plus type/build/CI. Resumed old guidance remains;
+  actual OpenCode/model/E41/E42 acceptance and #1405 remain open. #1419
+  `8ca566398` includes the assistant-tail fallback correction and 6,988 pass /
+  36 skip plus type/build/CI; final-head live resume/cache acceptance is open.
+  Earlier real DeepSeek Harness/Haiku proof reproduced framing, not the reported
+  answer omission. #1399 `7379cd465` has 7,000 pass / 36 skip plus type/build/CI;
+  native large-store/hourly/admission/shutdown acceptance remains open.
+- **Additional independent corrections:** #1220 `b1fffe4ac` now has the known
+  queued-input/revocation/clear-epoch fixes, a newly reproduced local-fallback
+  ownership correction and seven awaited fixture resets. Seven distinct red
+  cases are retained by stage; 29 affected and 59 adjacent tests pass, with
+  6,997 full passes / 36 skips plus type/build/CI. The original residual E41
+  cache discrepancy and actual-client/model/platform gate remain. #1400
+  `2f17bf73d` preserves the earlier Retry-After fix with a clean main merge;
+  7,059 full passes / 36 skips plus type/build/CI now pass. Actual naturally
+  spent-allowance/whole-pool/late-refusal/native-subagent/Linux proof remains.
+- **Real refusal/fallback stop:** #1399 warm-up received Opus 5.5 refusals,
+  then native CLI attempted Opus 4.8 despite the requested model/null fallback.
+  The model guard blocked 4.8 before network; only three actual 5.5 generations
+  occurred. All five owned processes joined; grants/config were removed. No
+  seed/hour run or further paid-model call followed. The manual harness now
+  stops on HTTP-200 refusal and owns its path-guard error/attempt accounting;
+  offline controls pass. The native credentialless fixture demonstrates one
+  refusal request with no-fallback/no-refusal-retry controls, but does not prove
+  the real OAuth model pivot disabled. No speculative production default changed.
+  [Critical witness and limits](evidence/backlog-20261019/1399/README.md).
+- **Historical E41 hold persists:** a fresh bounded chain diagnostic passes
+  correlated provider/native/stored Opus 5.5 IDs and original history/cache
+  assertions. It cannot explain the old missing-boundary 4.8 tags. The newly
+  witnessed fallback mechanism is relevant evidence, not retroactive proof.
+  Remaining #1410/#1396/applicable matrix arms stay held. Do not retry refused
+  requests or change models to obtain a green gate.
+- **Queue/release:** 165 accessible repositories covered, six managed queues,
+  product-batch snapshot of 28 open Meridian PRs including the then-open
+  evidence PR and 18 issues after six
+  product/test merges; scrub queues contain only the two existing release PRs.
+  No issue closed on incomplete proof. Release Please #1418 omits #1398 from
+  its generated body; correct/explain before any separately authorized release.
+  Storage/public API, platform, draft, owner and no-review holds remain.
+
+## Backlog review and corrections (2026-10-18 MDT / 2026-10-19 UTC) — historical
 
 Refreshed `origin/main` `095b4869b` and the paginated live queues: 29 Meridian
 PRs plus two scrub release PRs across six managed repositories. All five scrub
