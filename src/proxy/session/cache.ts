@@ -467,7 +467,8 @@ export function messagesHeld(lineage: LineageResult, messages: ReadonlyArray<{ r
  * published from a plugin-rewritten execution keeps only its raw-client proof
  * (`clientLineageHash`), and verifyLineage still measures it by that.
  *
- * Reads the shared store only; a copy it cannot read does not count. Only
+ * Reads the shared store only. Missing copies do not count; read failures
+ * reject the lookup. Only
  * copies used since `own.lastUsedAt` are checked against the history, so a
  * conversation whose own copy is the newest costs a store read per account.
  */
@@ -478,6 +479,9 @@ export function copyElsewhereHoldingMore(
 ): CopyElsewhere | undefined {
   const holdingMore = others.flatMap(other => {
     const found = lookupSharedSessionResult(other.key)
+    if (found.status === "error") {
+      throw new Error(`Shared session store is unavailable: ${found.error.message}`)
+    }
     if (found.status !== "found" || found.session.lastUsedAt <= own.lastUsedAt) return []
     const lineage = verifyLineage(stateFromSharedSession(found.session), messages, {
       compactionSurvival: process.env.MERIDIAN_COMPACTION_SURVIVAL === "1",

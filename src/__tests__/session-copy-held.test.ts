@@ -6,13 +6,14 @@
  * session wrote itself, are already in it. A reply the session did not write
  * is lost to the model.
  */
-import { describe, it, expect, beforeEach, afterEach } from "bun:test"
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { copyElsewhereHoldingMore, messagesHeld, storeSession } from "../proxy/session/cache"
 import type { LineageResult, SessionState } from "../proxy/session/lineage"
 import { setSessionStoreDir, storeSharedSession } from "../proxy/sessionStore"
+import * as sessionStore from "../proxy/sessionStore"
 
 const session: SessionState = { claudeSessionId: "s", lastAccess: 0, messageCount: 1, lineageHash: "h" }
 const user = (text: string) => ({ role: "user", content: text })
@@ -72,5 +73,28 @@ describe("copyElsewhereHoldingMore", () => {
   it("does not count a legacy copy elsewhere that proves no lineage", () => {
     expect(storeSharedSession("backup:conversation", "sdk-legacy", 3, "")).not.toBe(false)
     expect(copyElsewhereHoldingMore(others, history, { lastUsedAt: 0, held: 2 })).toBeUndefined()
+  })
+
+  it("rejects an unreadable other mapping instead of treating the copy as absent", () => {
+    const read = spyOn(sessionStore, "lookupSharedSessionResult").mockReturnValue({
+      status: "error", error: new Error("owned other-profile read failure"),
+    })
+    try {
+      expect(() => copyElsewhereHoldingMore(others, history, { lastUsedAt: 0, held: 2 }))
+        .toThrow("owned other-profile read failure")
+    } finally { read.mockRestore() }
+  })
+
+  it("rejects a later read error even after finding a newer readable copy", () => {
+    expect(storeSession("backup:conversation", history.slice(0, 3), "sdk-backup")).not.toBe(false)
+    const realRead = sessionStore.lookupSharedSessionResult
+    const read = spyOn(sessionStore, "lookupSharedSessionResult").mockImplementation(key =>
+      key === "unreadable:conversation"
+        ? { status: "error", error: new Error("owned later-profile read failure") }
+        : realRead(key))
+    try {
+      expect(() => copyElsewhereHoldingMore([...others, { profileId: "unreadable", key: "unreadable:conversation" }],
+        history, { lastUsedAt: 0, held: 2 })).toThrow("owned later-profile read failure")
+    } finally { read.mockRestore() }
   })
 })

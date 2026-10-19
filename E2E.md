@@ -8069,10 +8069,11 @@ routing:
 5. Repeat steps 1-3 with a client that sends no session key (ForgeCode or a
    headerless Pi) to cover the fingerprint lookup.
 
-**Limit:** the guard depends on the other account's newer mapping being present
-and readable. If that mapping is explicitly evicted (as the offline control
-does) or its read fails (a read error counts as no copy), the stale resume
-comes back. Pruning (`MERIDIAN_SESSION_PROFILE_COPY_PRUNE`) and expiry remove
+**Limit:** the guard depends on the other account's newer mapping being present.
+If that mapping is explicitly evicted (as the offline control does), the stale
+resume comes back. A shared-store read failure rejects the request before SDK
+execution; it must not be treated as a missing copy. Pruning
+(`MERIDIAN_SESSION_PROFILE_COPY_PRUNE`) and expiry remove
 the older copy, which is the stale one, first, so they lead to a replay rather
 than a stale resume. Do not use eviction, pruning or expiry as a pass path in
 the steps above.
