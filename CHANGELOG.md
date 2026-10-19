@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+* warn at startup that Bun-hosted requests may continue after client cancellation; identify the tested Bun versions and Node launch alternatives ([#1398](https://github.com/rynfar/meridian/pull/1398)) ([70b5af1](https://github.com/rynfar/meridian/commit/70b5af12a7ab72840d023206e310f931afd5635a))
 * forward mid-stream errors on OpenAI chat completions streams ([#1407](https://github.com/rynfar/meridian/issues/1407)) ([6c241a8](https://github.com/rynfar/meridian/commit/6c241a897bdc7ffe4c233d32270a17402b3528a0))
 
 ## [1.83.1](https://github.com/rynfar/meridian/compare/meridian-v1.83.0...meridian-v1.83.1) (2026-10-16)
