@@ -6,6 +6,11 @@ original checkout (`main` at `446a0f163`) and its desktop edits were preserved.
 Contributor fixes stay on their own PR branches; this maintainer evidence PR
 contains review records and proof only.
 
+The initial record landed in #1412 as signed `da8187ab4`.
+[Subsequent shutdown, credit and resolver-boundary results](shutdown-and-resolver-followup.md)
+supersede its earlier #1399 status and 58-commit-current snapshot. No product
+PR is represented as merged.
+
 ## Coverage and order
 
 Paginated GitHub discovery refreshed the authenticated owner's repositories and
@@ -33,8 +38,8 @@ and prior owner holds remain in force.
 | [#1403](https://github.com/rynfar/meridian/pull/1403) | Accept code scope; hold acceptance evidence | No surviving source defect; downstream nested documents/replay supported. Need a complete PDF receipt through real message/tool-output JSON/SSE flows and actual affected client/model (unspecified by contributor), plus local gates. Header-only mapping fixture is not model PDF proof. |
 | [#1406](https://github.com/rynfar/meridian/pull/1406) | Accept with corrections | Make passthrough CLAUDE.md Project/Full limitations truthful in UI/type/Crush docs. Prove fresh and previously contaminated resume isolation through actual plugin-qualified OpenCode. Does not resolve agent-switch issue #1404. |
 | [#1394](https://github.com/rynfar/meridian/pull/1394), [#1395](https://github.com/rynfar/meridian/pull/1395), [#1397](https://github.com/rynfar/meridian/pull/1397) | Strong candidates after live gates | No surviving implementation defect in async process identity, client cwd, or abort-link ownership. Missing exact-head affected-client/model/platform proof; forwarded-source attribution hold. |
-| [#1399](https://github.com/rynfar/meridian/pull/1399) | Fix before merge | An idle close joins a previously started 64-deletion sweep; new drain cap is bypassed. Add active-sweep/close control and reduce remaining work cooperatively; keep deletion join. |
-| [#1400](https://github.com/rynfar/meridian/pull/1400) | Fix before merge | Reproduced 10-minute advertised pool wait when effective account/model benches require at least three hours. Calculate from effective marks, add repeated-shorter/overlap controls; natural actual-account live gate remains. |
+| [#1399](https://github.com/rynfar/meridian/pull/1399) | Accept with correction; local/live gates open | Signed 4644524c/1372390c correct remaining drain work. Red/green, focused, type/build and final-head CI pass; full-local gate retains 89 failures. Supplementary 464 passes used Bun 1.3.14. Actual macOS load acceptance remains open. |
+| [#1400](https://github.com/rynfar/meridian/pull/1400) | Accept with correction; final gates pending | Signed cf399a7d corrects effective pool wait, retained scope and expiry. 418 guarded focused cases and type/build pass on Bun 1.3.11; target CI passes including test. Full local/live gates remain. See retry-after correction record. |
 | [#1401](https://github.com/rynfar/meridian/pull/1401) | Partial fix, scope/evidence hold | Useful stale-copy guard; newer-map eviction/read failure still loses assistant answers. Need explicit accepted limited scope or own-copy gap backstop and real A→B→A/rewind controls. |
 | [#1220](https://github.com/rynfar/meridian/pull/1220) | Accept direction, corrections required | Three known snapshot/revocation/cache-epoch fixes remain absent after rebase; original residual E41 cache failure unexplained. #1244 contract already approved. |
 | [#1243](https://github.com/rynfar/meridian/pull/1243) | Defer submitted SQL implementation | Mutable authority, legacy retirement race and live-lease overwrite persist; automatic default migration conflicts with already approved opt-in/offline #1277. Depends on #1220. |
@@ -264,8 +269,12 @@ history rewriting, source PR closure, release publication or external comments.
 The [complete credit audit](forwarded-credit-audit.md) and
 [58-commit manifest](forwarded-credit-manifest.json) preserve exact current
 Authors, dates, signature identities, earlier source mappings and adaptation
-comparisons. Fourteen commits are authored by eamonster27, 42 by passabilities,
-two by rynfar; all current signatures are valid. All 14 earlier source identities
+comparisons. In that historical snapshot, fourteen commits are authored by
+eamonster27, 42 by passabilities and two by rynfar; its signatures are valid.
+The [60-commit addendum](forwarded-credit-1399-addendum.md) retains all 58 and
+adds two signed #1399 corrections. The [61-commit addendum](forwarded-credit-1400-addendum.md)
+adds only #1400's signed correction and qualifies commit-rollup CI scope.
+All 14 earlier source identities
 and dates match their forwarded copies, including timezone, but original SHAs
 and port/carve contents differ. A normal merge preserves the current objects;
 it does not retroactively restore earlier objects or source-author signatures.
@@ -294,9 +303,11 @@ Further inference stopped. No paid Extra Usage or changes to the owner's
 accounts/configuration were used to obtain a passing result; fixtures used
 isolated configurations.
 
-A third isolated task is correcting #1399's active-sweep shutdown interleaving
-and adding a before/after regression. Its source correction and local checks
-are pending; no actual-model load acceptance is claimed.
+#1399's active-sweep shutdown correction is now pushed and independently reviewed;
+full-local and actual-model load gates remain open. Follow-up work on the
+mocked-SDK test boundary is pending. #1400's signed Retry-After correction is now
+pushed with [focused evidence and retained gates](retry-after-correction.md).
+See the [shutdown follow-up](shutdown-and-resolver-followup.md) for those earlier results.
 
 The [independent evidence review](evidence-review.md) and
 [follow-up](evidence-review-addendum.md) cover the current record. The follow-up
