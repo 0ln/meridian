@@ -392,6 +392,58 @@ an actual loaded-Linux-host timeout reproduction**. Stock Node controls also
 cover the aggregate Git budget, TERM resistance, detached/stale launcher facts
 and failed status. [Source mappings, sanitized proof and limits](docs/maintenance/evidence/1330-source-build-identity.md).
 
+## Startup warning under Bun (E87)
+
+**What it proves:** a proxy started under Bun says at startup that it cannot
+stop a request whose client goes away before the first byte of the response,
+and how to run it so it can. A proxy under Node says nothing.
+
+Under Bun, the `node:http` server that @hono/node-server serves with is never
+told of a client that goes away before the response's first byte: neither the
+socket nor the response emits `close` or turns `destroyed`, a 0-byte socket
+write succeeds, and headers flushed early only surface the loss at the next
+write. The request's abort signal never fires, so a request cancelled while the
+model is still thinking (Esc in Claude Code, an orchestrator stopping subagents
+still starting) runs on to the end of its turn, on the account's allowance.
+Under Node it stops. Serving with `Bun.serve` instead would change the `server`
+that `startProxyServer` hands to its callers, so this change only warns:
+`runtimeCancelWarning.ts` prints one `console.warn` line after the startup
+banner when `process.versions.bun` is set. The line names the running Bun, the
+Bun releases the behaviour was checked on (1.2.20, 1.3.11, 1.3.14), and the way
+out for both installs: `npm run build && npm run start` from a source checkout,
+or `meridian` started with Node (not `bunx --bun`) from an npm install. It
+prints on any Bun, including the documented `npm run proxy:direct` dev start,
+and never when the proxy is started silently. The supervisor already runs the
+build under Node and uses the source under Bun only when there is no build.
+
+**Unit coverage:** `runtime-cancel-warning.test.ts` (the warning names the
+running Bun, the probed releases, the cost and both remedies; it is absent
+under Node).
+
+**Offline checks (this build, Linux x64, no credentials, no requests):**
+
+- Startup with an empty `HOME` and `CLAUDE_CONFIG_DIR` on loopback, stopped
+  with SIGINT after 25 s: `bun run ./bin/cli.ts` under Bun 1.3.14 prints the
+  warning right after the `Build:` line; `node dist/cli.js` (what the
+  `meridian` bin runs) under Node 22.13.0 prints none.
+- A bare `node:http` server with a raw TCP client that sends a request and
+  drops the socket after 300 ms without a response: under Bun 1.2.20, 1.3.11
+  and 1.3.14 no `req`, `res` or socket `close` fires within 2 s; under Node
+  22.13.0 all three fire at about 310 ms. This checks the premise at the
+  `node:http` level only, not through the proxy.
+
+**Source evidence (not re-run against this build):** the contributor probed
+the missed disconnect through the proxy on 2026-10-06 on macOS with Bun 1.3.14
+and Claude CLI 2.1.284–2.1.294, through a client-cancel gate that is not part
+of this change: under Bun no routing mode stopped the SDK child when the client
+went before the first byte, while the built proxy under Node with manual
+routing closed the SDK child's API request about 1.5 s after the client went.
+
+**Not covered:** the underlying cancellation under Bun is not fixed; the
+warning only reports it. Live evidence owed: a run through the proxy with a
+real client cancel on the current Bun (and any Bun 1.4.x in use, where the
+claim is unchecked), on Linux and on Windows. No model calls were made here.
+
 ## Antigravity subscription CLI backend
 
 ```sh
@@ -6829,6 +6881,20 @@ Both response modes must preserve OpenCode-shaped Windows client paths, execute 
 `bun scripts/e2e-client-cwd.mjs --no-cwd-only` sends bare Pi requests without a system prompt in both response modes. It requires a real SDK/model response and checks the observed SDK prompt says the client directory and repository are unknown, without relabeling the proxy workdir as a client `<env>` directory. The model's prose is recorded, not asserted.
 
 Also run the E42 actual OpenCode gate with `--live --extended --separate-proxy-cwd` and the pinned `E2E_OPENCODE_BIN`. The harness isolates the client HOME/PWD as well as XDG state, while the proxy retains its normal Claude authentication. It asserts the client directory from actual request bodies and stable client system prompts before comparing cache reuse. The manually invoked hidden-summary probe runs in a disposable client fork: this checks stripped headers without switching the primary client agent or injecting its tool-catalog update into primary history. A marker assertion rejects any leak into primary requests. This keeps the client project and configured SDK workdir distinct through tool use, restart, undo, fork, compaction and concurrent children. Run all four E41 modes after CWD/session-identity changes.
+
+## Claude Code working directory sent among the messages
+
+**What it proves:** a Claude Code client that sends its `# Environment` block among the messages, not in the system prompt, has its SDK child run in the client's directory and its prompt name that directory. From 2.1.290 the client sends the block as a `system` turn after the first user message for models that take system turns (Opus, Sonnet, Fable), and for Haiku as a `<system-reminder>` block in the run of reminder blocks that opens the first user message. Only that leading run is read, so a reminder-looking block the user types after their own text is ignored.
+
+Offline gate: `bun test src/__tests__/claude-code-adapter.test.ts src/__tests__/claude-code-cwd-note.test.ts src/__tests__/proxy-tool-blocking.test.ts src/__tests__/claude-code-cwd-upgrade.test.ts`. The two `claude-code-request-2.1.290-*.json` fixtures are real requests of that client (`claude -p` against a scripted local endpoint), tools dropped and the temporary path renamed.
+
+Live gate, on the proxy host, with the client in a disposable directory that exists there and `MERIDIAN_WORKDIR` unset:
+
+1. Run the current Claude Code CLI through Meridian once with a model that takes system turns and once with Haiku. Ask it to report `pwd` with its Bash tool.
+2. Require, for both, the SDK child's `cwd` to be the client's directory in the proxy log or query observer, the prompt's `<env>` block to name it, and no "did not declare a working directory" note.
+3. Upgrade check: start a conversation on the previous Meridian build, then continue it on this one. On the first continued turn, require exactly one `session.transcript_locator_changed` log event whose `toProjectDir` is the client's directory, and no `session.resume_retry` events. On the turn after, require a plain resume: no `session.transcript_locator_changed` and no `session.resume_retry`.
+
+Evidence: the source runs were on macOS with Claude CLI 2.1.284–2.1.294 (fixtures captured from 2.1.290). They were not re-run against this build. The live gate above is owed on the current CLI before merge.
 
 ## Polytoken native client loop
 
