@@ -262,6 +262,18 @@ describe("claudeCodeAdapter.extractClientWorkingDirectory", () => {
     })).toBeUndefined()
   })
 
+  for (const boundary of [
+    { type: "image", source: { type: "base64", media_type: "image/png", data: "owned fixture" } },
+    { type: "tool_result", tool_use_id: "owned", content: "owned result" },
+  ]) {
+    it(`stops the leading reminder run at a ${boundary.type} block`, () => {
+      expect(cwdOf({ messages: [{ role: "user", content: [
+        reminder("Today's date is 2026-10-20."), boundary,
+        reminder(environment("/from/user/after/content")),
+      ] }] })).toBeUndefined()
+    })
+  }
+
   it("takes none from a later user message, an assistant message or a tool result", () => {
     expect(cwdOf({
       messages: [

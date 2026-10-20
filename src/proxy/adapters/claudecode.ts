@@ -96,9 +96,11 @@ const SYSTEM_REMINDER_OPEN = "<system-reminder>"
  */
 function leadingReminderTexts(content: unknown[]): string[] {
   const reminders: string[] = []
-  for (const text of textBlocksOf(content)) {
-    if (!text.startsWith(SYSTEM_REMINDER_OPEN)) break
-    reminders.push(text)
+  for (const block of content) {
+    const candidate = block as { type?: unknown; text?: unknown } | null
+    if (candidate?.type !== "text" || typeof candidate.text !== "string"
+      || !candidate.text.startsWith(SYSTEM_REMINDER_OPEN)) break
+    reminders.push(candidate.text)
   }
   return reminders
 }
