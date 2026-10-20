@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.84.0](https://github.com/rynfar/meridian/compare/meridian-v1.83.1...meridian-v1.84.0) (2026-10-19)
+
+
+### Features
+
+* **profiles:** ?provider= links open / and /profiles on given provider chips ([#1411](https://github.com/rynfar/meridian/issues/1411)) ([58d9dd8](https://github.com/rynfar/meridian/commit/58d9dd8c002cc9f63e966a92770c66bd908f27b5))
+
+
+### Bug Fixes
+
+* warn at startup that Bun-hosted requests may continue after client cancellation; identify the tested Bun versions and Node launch alternatives ([#1398](https://github.com/rynfar/meridian/pull/1398)) ([70b5af1](https://github.com/rynfar/meridian/commit/70b5af12a7ab72840d023206e310f931afd5635a))
+* forward mid-stream errors on OpenAI chat completions streams ([#1407](https://github.com/rynfar/meridian/issues/1407)) ([6c241a8](https://github.com/rynfar/meridian/commit/6c241a897bdc7ffe4c233d32270a17402b3528a0))
+
+## [1.83.1](https://github.com/rynfar/meridian/compare/meridian-v1.83.0...meridian-v1.83.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* advertise native Opus and Fable context on Pro ([#1358](https://github.com/rynfar/meridian/issues/1358)) ([29a2467](https://github.com/rynfar/meridian/commit/29a24675673b6951c6645548f59d301e53300702))
+* preserve context overflow signals for client compaction ([#1388](https://github.com/rynfar/meridian/issues/1388)) ([f13f413](https://github.com/rynfar/meridian/commit/f13f413299bf95beecc832b437d19a37150186f7))
+* **profiles:** backfill missing Team seat tiers during token refresh ([#1329](https://github.com/rynfar/meridian/issues/1329)) ([0e0adce](https://github.com/rynfar/meridian/commit/0e0adce6ad33626e61bee6fb63dcfb4810e8aa1c))
+* **profiles:** clear stale routing exhaustion and spent state on re-auth or refresh ([#1392](https://github.com/rynfar/meridian/issues/1392)) ([458bba7](https://github.com/rynfar/meridian/commit/458bba70002ebaafc82ab12e69cd2d4ab9ebc7f0))
+* renew the OAuth usage token before expiry and after a run of 429s ([#1389](https://github.com/rynfar/meridian/issues/1389)) ([dfe264d](https://github.com/rynfar/meridian/commit/dfe264daf2bca18fcc426e4e1268987ea166c427))
+
 ## [1.83.0](https://github.com/rynfar/meridian/compare/meridian-v1.82.0...meridian-v1.83.0) (2026-10-15)
 
 
