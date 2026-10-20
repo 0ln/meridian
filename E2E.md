@@ -8559,6 +8559,66 @@ validation. The separately isolated HTTP regression file checks supplied setup
 tokens and preserves stored subscription plan, renewal and missing-token rules.
 See [bounded proof](docs/maintenance/evidence/1257-profile-credential-isolation.md).
 
+# Packaged SQLite bookkeeping gate
+
+Bookkeeping uses the runtime's built-in SQLite, and qualification requires the
+upstream WAL-reset fix on every writer/checkpointer. Record the actual engine
+version/source ID alongside Node/Bun and platform. Node 22.22.3 exposes SQLite
+3.51.3; the installed package gates must use a qualified runtime. Unpatched
+engines must refuse before a persistent native main/guard open, without fallback.
+
+The Linux unit-test job pins Bun 1.4.3 (SQLite 3.53.4). Bun 1.3.11 embeds
+SQLite 3.51.2 on Linux and must fail this gate. A custom library cannot replace
+Linux Bun's statically linked engine; macOS selection below is platform specific.
+
+On macOS, Bun normally loads Apple's SQLite. For source/unit checks on a host
+whose OS library is older, explicitly select an installed patched shared library:
+`MERIDIAN_TEST_SQLITE_LIBRARY=/absolute/path/to/patched/libsqlite3.dylib npm test`.
+The test-only preload uses Bun's public `Database.setCustomSQLite()` before any
+test database and passes the selection to owned Bun test actors. Record the
+library hash and actual source ID. Product code never selects a global library;
+stock Node package tests independently exercise its bundled engine. The custom
+test selection is not proof that the host's default Bun engine is qualified.
+
+For a SQLite candidate, build and pack the final tree, then install both artifacts
+through the canonical smoke (Node 22):
+
+```sh
+npm run build
+npm pack --json
+node scripts/e2e-session-bookkeeping-packaged.mjs \
+  --package ./rynfar-meridian-<candidate>.tgz \
+  --baseline-package /path/to/independently-built-json-baseline.tgz
+node scripts/e2e-libsql-package.mjs ./rynfar-meridian-<candidate>.tgz
+```
+
+The bookkeeping smoke imports no `src/` modules: independently installed packages
+serve seeded context usage over HTTP, two Node processes share one SQLite
+directory, live owners refuse export, one owner's close preserves the other,
+restart retains mappings, explicit export restores a JSON baseline read, and a
+fresh directory initializes without migration. The baseline tarball is explicit
+because registry 1.78.0 has the known bundled-libsql import defect; a failed old
+import is not a successful rollback test.
+
+The smoke uses an explicit nonsecret API profile pointed at loopback, plus a
+private native config directory. This makes the health assertions independent
+of an operator login; an unauthenticated Claude profile correctly reports 503
+even when storage works. No model request is made. Normal stop and failure
+cleanup join each original child exit/close and both captured pipes before
+removing the temporary package installs and state. Missing custody fails the
+gate and retains that fixture for diagnosis.
+
+This gate exercises storage and server integration, **not** real model/SDK turns.
+It does not replace the affected-flow chain/parallel, stream/non-stream, resume,
+Linux admission or deletion-child platform scenarios in this guide. Run the same final
+package smoke on Linux before claiming Linux delivery. Node/OS/architecture,
+artifact digests, baseline identity and exit codes belong in the durable evidence.
+
+The old-writer compatibility suite also accepts an optional pre-SQLite package:
+`BOOKKEEPING_COMPAT_TARBALL=/path/to/package.tgz bun test src/__tests__/bookkeeping-old-artifacts.test.ts`.
+It supplements the published baseline with the same writer/gate assertions;
+an unavailable optional artifact is reported explicitly, not counted as a pass.
+
 ## Home Manager service environment rendering
 
 For the opt-in `unsetEnvironment` configuration, run native Nix with the existing
