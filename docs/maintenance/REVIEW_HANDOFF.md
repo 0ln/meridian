@@ -23,6 +23,89 @@ the contributor's PR is what merges:
 Corrections to past PRs (reopening, comment edits, release notes, any rewrite of
 `main`) are the owner's decisions in #1363. Do not start them from this note.
 
+## Renewed issue goal (2026-10-19 MDT)
+
+The owner requested more issue work after release 1.84.0 and deferred Mac
+notarization. Fresh paginated discovery covered 165 visible repositories and
+six managed queues without a coverage gap: 26 Meridian PRs / 18 issues at batch
+start, with only the two existing scrub release PRs elsewhere. The original
+checkout's 12 file hashes remain unchanged. No release, external comment, owner
+credential write or issue closure was performed in this batch.
+
+- **CI repair [#1425](https://github.com/rynfar/meridian/pull/1425):** the remaining
+  telemetry logger registration can replace the shared dispatcher and produces
+  the fast failure-observer counters `[0, 1, 1]`. Baseline and old-registration
+  controls fail; the correction passes on Darwin and Debian Linux arm64 using
+  pinned Bun 1.3.11 with the original assertions. An explicit suite-load-order
+  fixture is the 25th `npm test` invocation. The next full gate exposed a
+  separate drain-fixture GC lifetime race: a real lock candidate appeared in
+  the complete abort-test snapshot while SDK/store-read counts remained zero.
+  Fixture teardown now joins accepted work, GC and backend shutdown before
+  removing/resetting the root. Holding real lock publication distinguishes the
+  old sleep from the corrected cleanup; all 31 drain tests pass on both
+  platforms. [Durable proof and original failures](evidence/logger-mock-order-20261019/README.md).
+  Issues 917 and 933 remain open; these two mechanisms do not explain every
+  historical failure. The complete 25-invocation local gate passes **6,996 / 36 skip / 0 fail**,
+  standalone typecheck/build and all active final-head CI pass. Normal exact-head
+  squash landed signed `3feb772479d5e04f1f28e5c452ef359b09d1c65b`; its tree
+  matches reviewed `b3ebc945d3`. The Nix push duplicate was superseded by the
+  successful same-head PR run under the documented workflow concurrency policy.
+- **Configuration reference [#1424](https://github.com/rynfar/meridian/pull/1424):**
+  removes literal conflict markers and contradictory duplicate configuration
+  rows. Both sides were reconciled against current query/recovery code,
+  including structured output, JSON-parse rejection, undeclared names and
+  opt-in limits. Content, table-shape, anchor and diff checks pass. Its first
+  CI run failed on the logger cause above; it now includes the mainline repair via a signed merge and requires
+  fresh final-head CI before normal squash.
+- **Account-copy guard [#1401](https://github.com/rynfar/meridian/pull/1401):**
+  signed correction `32483870992ce3f953322cf6c1bf9bbdaede2469` now rejects
+  unreadable other-profile mappings rather than treating them as absent. Two
+  red fault controls become green; 13 focused unit/mocked-HTTP cases and the
+  complete 24-invocation local gate (**6,995 pass / 36 skip / 0 fail**) plus
+  typecheck/build pass. The clean main merge and correction were added to the
+  source fork's existing branch; all ten original authored objects remain
+  unchanged. CI run 39289578058 failed with the same reproduced logger counts.
+  Signed main merge `1c2bd51dd940c082cdcfc85bdea31671edb650b0` now integrates
+  the repaired fixtures, retaining all ten original source objects unchanged.
+  Fresh full 25-invocation local and final-head CI results are recorded in the
+  source PR body; standalone typecheck/build pass.
+  Missing/evicted mappings and clock-based comparison remain limits. Actual E85
+  client/account/model proof, durable actual-client harness, all four E41 modes
+  and prior model/cache holds remain acceptance gates. No source work is
+  claimed as landed. [Correction custody, red/green logs and limits](evidence/issue-queue-r2-20261019/README.md).
+- **Agent switching [#1404](https://github.com/rynfar/meridian/issues/1404) /
+  draft [#1423](https://github.com/rynfar/meridian/pull/1423):** product head
+  `4e90948a22b6436ed1f4c2b7148f454984f04549` replays full client history on
+  explicit OpenCode primary-agent changes. Native probes establish ordinary
+  resume and forks retain the original prompt. The rejected broad system hash
+  and original dynamic-context regression controls are retained; the final
+  guard preserves those assertions. Local gate **6,992 pass / 36 skip / 0 fail**,
+  all 24 invocations, typecheck/build and 26 focused controls pass. A clean
+  independently installed artifact passes actual OpenCode 2.0.21, matching V2
+  plugin, scrub 0.2.3, SDK 0.2.141, native 2.1.301 and Haiku 5.5 on Debian
+  Linux arm64. Both baseline/candidate use five actual generations; canaries
+  change from all false to false/true/true/false, full history survives, and
+  only the unchanged reviewer resumes. All owned work joins and the private
+  access-only grant was removed. Final-head active CI passes at `b904ee7153`;
+  a superseded duplicate Nix context was cancelled while the same context also
+  passed. [Immutable receipts, failures and limits](https://github.com/rynfar/meridian/blob/b904ee7153cac195f6549d1f777be6d73d124cf4/docs/maintenance/evidence/1404-opencode-agent-switch-20261019/README.md).
+  Reporter OpenCode 2.0.31 qualification, all four live E41 modes and prior
+  unexplained Opus model/cache holds remain. Same-agent instruction edits retain
+  the native limitation. The Haiku task did not retry the refused Opus load task.
+
+The final paginated refresh still covers 165 visible repositories and six
+managed queues without gaps or new issues. At this documentation checkpoint
+Meridian has 28 open PRs (including this PR and draft 1423) and 18 issues; the
+scrub queues still contain only their two held release PRs.
+
+Other source-author, draft/no-review, public API/SQLite, native platform and
+naturally exhausted allowance gates below remain in force. Issue 1390 has a
+source-author fork branch but no source-author PR; no code was copied into a
+maintainer PR, and permission/classifier/client-denial qualification remains.
+Mac notarization is deferred; the two scrub release PRs remain held. Refresh live
+heads and this checkpoint before continuing; do not treat a green CI rollup as
+product acceptance.
+
 ## Overnight goal checkpoint (2026-10-19 MDT)
 
 The six-PR product/test batch ends at `6c241a897bdc7ffe4c233d32270a17402b3528a0`;
