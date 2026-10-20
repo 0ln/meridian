@@ -163,15 +163,18 @@ describe("session store mutation cost on a large store", () => {
     storeSharedSession(keys[0]!, randomUUID(), 3, hash(), [hash(), hash(), hash()])
     const lags: number[] = []
     for (let index = 1; index <= 5; index++) {
-      // Pair the same-sized reference and warm publication to avoid measuring
-      // two different periods of filesystem contention.
-      baselines.push(await loopLagOf(`baseline-${index}`, () => fullDocumentReference(dir, String(index))))
-      lags.push(await loopLagOf(`warm-${index}`, () => {
+      const reference = async () => baselines.push(await loopLagOf(`baseline-${index}`, () => fullDocumentReference(dir, String(index))))
+      const warm = async () => lags.push(await loopLagOf(`warm-${index}`, () => {
         storeSharedSession(keys[index]!, randomUUID(), 3, hash(), [hash(), hash(), hash()])
       }))
+      // Counterbalance which writer follows the preceding durable publication.
+      // Always running warm second charges periodic flush/queue latency only
+      // to that arm, even though both writers retain the same three barriers.
+      if (index % 2 === 0) { await warm(); await reference() }
+      else { await reference(); await warm() }
     }
     const entry = lookupSharedSession(keys[6]!)!
-    baselines.push(await loopLagOf("baseline-locator", () => fullDocumentReference(dir, "locator")))
+    // Sixth pair completes three reference-first and three warm-first pairs.
     lags.push(await loopLagOf("warm-locator", () => {
       attachSharedTranscriptLocator(keys[6]!, entry.claudeSessionId, {
         sessionId: entry.claudeSessionId,
@@ -179,6 +182,7 @@ describe("session store mutation cost on a large store", () => {
         projectDir: "/home/user/.claude/projects/other",
       })
     }))
+    baselines.push(await loopLagOf("baseline-locator", () => fullDocumentReference(dir, "locator")))
 
     console.log(`[loop-lag] ${(text.length / 1e6).toFixed(1)} MB store: warm mutation median ${median(lags).toFixed(1)} ms, max ${Math.max(...lags).toFixed(1)} ms; full-document baseline median ${median(baselines).toFixed(1)} ms`)
     expect(median(lags)).toBeLessThan(median(baselines) * 0.75)
