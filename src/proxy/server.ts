@@ -2006,6 +2006,12 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
     // spans queue retries and profile-failover re-entries; create one only
     // when no outer link exists (direct in-process callers).
     const requestAbort = options.requestAbortLink ?? linkRequestAbort(requestSignal)
+    // Only a link made here is this handler's to detach. An adopted one is the
+    // whole request's: a priority dispatch returns from this handler while its
+    // attempts are still running, and each attempt returns before the next, so
+    // a detach here would leave the rest of the request deaf to the client
+    // going away, with the model running on to the end of its turn.
+    const ownsAbortLink = options.requestAbortLink === undefined
     const admissionLifecycleOptions = { ...sessionGcOptions, admissionSignal: requestAbort.controller.signal }
     let streamOwnsAbortLink = false
 
@@ -8311,7 +8317,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
               // attempt re-enters this handler with the same link, and a
               // per-attempt detach would deafen it to watchdog, subtree,
               // client, and shutdown aborts for the rest of the request.
-              if (!streamOwnsAbortLink) requestAbort.detach()
+              if (ownsAbortLink) requestAbort.detach()
             }
             })().catch((error: unknown) => terminateFailedStream(error)).finally(() => {
               resolveStreamCompletion()
@@ -8322,7 +8328,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
             requestAbort.abort(reason)
             // Only the owner detaches the link; an adopted request-wide link
             // stays attached for the outer handler's lifetime.
-            if (!streamOwnsAbortLink) requestAbort.detach()
+            if (ownsAbortLink) requestAbort.detach()
             // A cancelled response body is the other way a client says "stop",
             // and the only one an in-process caller can reach. Children are
             // cancelled here as well, latched so a real socket teardown —
@@ -8465,7 +8471,7 @@ function createProxyServerWithAuthOwner(config: Partial<ProxyConfig>, authOwner:
       } finally {
         if (!streamOwnsAbortLink) {
           await abandonManagedFork("request_complete_without_commit")
-          requestAbort.detach()
+          if (ownsAbortLink) requestAbort.detach()
         }
       }
     })
