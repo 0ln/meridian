@@ -8599,3 +8599,11 @@ Run once against an unbudgeted baseline (which sends ~249 KB in the replayed ste
 and reports `NEWEST_TURN_LOST`) and once against the candidate (which shrinks
 the oldest tool results first to ~170 KB and reports `NEWEST_TURN_DELIVERED`
 with `newestTail: true`, `oldestHead: true`, `nonce: true`, and `toolCalls: 0`).
+
+
+## Maintained actual-client profile history probe
+
+The [E85 client history harness](docs/maintenance/evidence/e85-client-history-harness.md)
+checks keyed return, a separate actual OpenCode rewind and keyless Pi with
+retained profile mappings and exact native namespaces. Its scripted upstream
+preflight does not replace the actual-model acceptance required by #1401.
