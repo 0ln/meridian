@@ -18,6 +18,66 @@ See [before/after receipts, retained timing failure and limits](docs/maintenance
 
 # End-to-End Testing
 
+## Client-owned tool isolation: model-facing request gate
+
+```sh
+bun scripts/e2e-passthrough-tool-isolation.mjs --baseline --claude-executable=<real-native-claude>
+bun scripts/e2e-passthrough-tool-isolation.mjs --claude-executable=<real-native-claude>
+```
+
+The baseline must fail: it restores the former filesystem-setting/MCP-discovery
+options. A disposable user SessionStart hook advertises a foreign context-mode
+name, and a disposable project MCP server declares that same name. The actual
+Agent SDK and native Claude CLI serialize their **model-facing HTTP request**
+to a loopback responder. Assertions reject either foreign guidance or foreign
+tool declarations and require the client-owned tool and client context to remain.
+This catches contamination even if a model happens to choose the right tool.
+
+The candidate must pass with only `mcp__oc__context-mode_ctx_execute` advertised.
+Reports retain the tool-name list, relevant injected guidance and cleanup result;
+credentials, raw unrelated prompts and the owner's configuration are not copied.
+The source checkout can contain a non-executable CLI fixture: explicitly choose
+the real native binary for this gate. The SDK query has a 60-second bound and
+owned processes/listener are closed before returning.
+
+This is real SDK/CLI **request construction** E2E with a fixture model responder,
+not real model-choice or native OpenCode child acceptance. After activation, run
+an unguided native OpenCode child through the implicated Claude-family route,
+assert its emitted client tool name, and inspect the SDK SessionStart context.
+An isolated hook invocation or one successful tool choice is insufficient.
+
+Passthrough intentionally ignores proxy-host `claudeMd` filesystem sources:
+those sources load executable hooks/plugins as well as markdown. Client-owned
+instructions must arrive in the client system context. Explicit SDK hooks,
+memory settings, preset selection and non-passthrough source selection remain.
+
+Existing native sessions can retain SessionStart guidance injected before this
+isolation policy. Removing a discovery source does not erase saved guidance.
+A fresh client conversation is required to establish an uncontaminated native
+session; do not treat successful resumed tool filtering as proof of clean
+instructions. The owned resumed-session probe in the maintenance evidence
+records this limitation separately from the fresh-session gate.
+
+The actual OpenCode check is `node scripts/e2e-opencode-host-isolation.mjs`.
+Build first. Set absolute `E2E_OPENCODE_BIN` (2.0.31 by default),
+`E2E_NATIVE_BIN`, installed server scrub `E2E_PLUGIN_PATH`, and an owned
+`E2E_EVIDENCE_DIR`; `E2E_MERIDIAN_ROOT` selects the built source or installed
+package. It installs that package's matching V2 client plugin and verifies the
+server scrub before and after the run. Client and proxy projects are distinct.
+The proxy's disposable full instruction sources contain a CLAUDE.md marker,
+SessionStart hook and HTTP MCP server. The client's actual file-read/result
+round must succeed while all three host sources are absent from its native
+model request. `--expect-baseline` requires all three leaks on unchanged main.
+The default upstream is scripted and spends no model requests.
+
+For actual model acceptance, add `--live`, `E2E_ALLOW_LIVE_MODEL=1`, private
+access-only `E2E_LIVE_PROFILE_FILE`, and a fresh read-only
+`E2E_USAGE_GUARD_FILE` establishing included capacity and disabled Extra Usage.
+This gate pins Haiku 5.5, rejects refusal/model changes before another request,
+bounds generations, joins original child/pipe handles, and correlates provider,
+native and public-SDK stored message IDs. It does not inspect private SDK
+transcripts. Run all four E41 modes and affected E42 hosts separately.
+
 ## Overlapping passthrough queries
 
 ```sh
