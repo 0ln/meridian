@@ -5503,6 +5503,46 @@ keep the client and give the proxy a 4 s session-turn hold. Each leg waits for
 every request the SDK child had open there to close. `CANCEL_GATE_SERVER`
 names another build's `dist/server.js`, to run the gate against older code.
 
+The supplemental Node harness also covers a nonstreaming HTTP disconnect,
+parent/child cancellation and a queued child, with actual SDK/native process
+and pipe custody. It uses a scripted upstream by default:
+
+```bash
+E2E_NATIVE_BIN=/absolute/path/to/claude \
+E2E_EVIDENCE_DIR=/absolute/new/evidence-directory \
+E2E_CANCEL_CASE=nonstream \
+node scripts/e2e-priority-cancellation.mjs
+```
+
+Build first. Set `E2E_MERIDIAN_ROOT` to an independently installed candidate
+or baseline package root to exercise its `dist/server.js`. Other cases are
+`watchdog`, `subtree` and `queued`. `--baseline` expects the old nonstream,
+watchdog and subtree defect; queued cancellation must pass on both heads.
+The observation window remains five seconds and the watchdog eight seconds.
+A Docker host must have a valid machine ID and `/proc`; generate a fresh
+container machine ID before starting rather than bypassing the startup guard.
+Use a task-owned `--rm` container and preserve the evidence outside it.
+
+`--live` requires `E2E_ALLOW_LIVE_MODEL=1`, a mode-0600
+`E2E_LIVE_PROFILE_FILE` and `E2E_USAGE_GUARD_FILE` matching the committed
+`profileHistoryAdmission.mjs` contract. The grant contains two distinct owned
+OAuth-token profiles named `pool-a` and `pool-b`; only `pool-a` may forward
+inference. The guard must record a fresh official profile check, active paid
+plan, disabled paid ExtraUsage, a bounded included attempt and a known-spent
+non-inference spare. Never put tokens in a command line, log or evidence.
+The harness stops on provider rejection, overage or a different actual model;
+it does not refresh tokens or switch inference accounts to obtain a pass.
+
+Live acceptance requires the provider response model/message ID to match the
+original observed native PID, init and message_start. Original native
+exit/close/stdout/stderr and host custody must join. Only public SDK history
+metadata is retained; an interrupted generation may have no completed public
+assistant message. The disposable native home/config/session tree is removed
+after joins, while reports and logs remain in the evidence directory.
+HTTP closure is observed directly; billing after cancellation is not measured.
+Literal native interactive Escape, platform comparisons and four E41 modes
+remain separate acceptance evidence.
+
 ### Verified
 
 2026-10-16, Linux x64, Bun 1.3.14, Node 22.13.0, against the server of
