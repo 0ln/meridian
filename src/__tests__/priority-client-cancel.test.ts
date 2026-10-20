@@ -7,10 +7,12 @@
  * it.
  * An attempt that detached it as it returned left the rest of the
  * request deaf: the client was gone and the model went on to the end of its
- * turn, on the account's allowance. A streaming client that had already
- * received bytes still stopped it by cancelling the body; one cancelled before
- * the first byte, in the queue for an SDK slot, or while the CLI started, did
- * not, and neither did any non-streaming one.
+ * turn, on the account's allowance. These direct app.fetch controls target
+ * that link. On the real Node HTTP path, main's outer streaming relay can
+ * already observe a client or queued request being cancelled through its
+ * response body; those wire cases are regression controls, not proof that
+ * every cancellation route was broken. Active non-streaming turns and the
+ * request-wide watchdog/subtree paths still need the adopted link attached.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
