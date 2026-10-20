@@ -8,7 +8,7 @@ const actual = { ...fs }
 const lockPath = join(root, "writer.lock")
 // Existence is the parent's completion signal. Publish only complete bytes:
 // open/write on the canonical name lets a polling parent observe an empty file.
-function publishReceipt(suffix: string, value: string) {
+const publishReceipt = (suffix: string, value: string) => {
   const target = join(root, `${name}.${suffix}`)
   const pending = `${target}.pending-${process.pid}`
   actual.writeFileSync(pending, value)
