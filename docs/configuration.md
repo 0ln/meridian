@@ -1169,6 +1169,10 @@ ANTHROPIC_API_KEY=your-secret-key ANTHROPIC_BASE_URL=http://meridian-host:3456 o
 
 Node 22: `meridian-bookkeeping <command> --session-dir /absolute/private/session-directory [--json]`.
 The npm entry is `dist/session-bookkeeping.js`; this is not a proxy request endpoint.
+Docker images include `/app/dist/session-bookkeeping.js`; invoke it with
+`--entrypoint node` and the same private session-directory mount while writers
+are stopped. Use a supported local filesystem for that mount; the container
+writable overlay is not a supported SQLite data directory.
 
 * `inspect` is read-only, holds a shared maintenance guard when one exists, and can run beside live proxies.
 * Stop/drain **all** writers, then `migrate --writers-stopped`. The flag is the operator's assertion,
