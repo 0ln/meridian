@@ -124,11 +124,11 @@ async function awayAndBack(app: TestApp, session: string | null): Promise<{ move
 const savedEnv: Record<string, string | undefined> = {}
 let root = ""
 
-beforeEach(() => {
+beforeEach(async () => {
   seen = []
   root = realpathSync(mkdtempSync(join(tmpdir(), "meridian-return-trip-")))
   resetOAuthUsageCache()
-  clearSessionCache()
+  await clearSessionCache()
   resetActiveProfile()
   rateLimitStore.clear()
   __setFetchOAuthUsageOverride(async () => null)

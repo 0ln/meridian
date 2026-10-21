@@ -9,5 +9,5 @@ process.env.MERIDIAN_SESSION_LOCK_TIMEOUT_MS = "0"
 const api = await import(pathToFileURL(join(packageRoot, "dist/server.js")).href)
 // The independently installed OLD package's public cache reset attempts a
 // persistent JSON write through its own unchanged legacy lock implementation.
-api.clearSessionCache()
+await api.clearSessionCache()
 process.exit(existsSync(join(directory, "sessions.json")) ? 0 : 73)

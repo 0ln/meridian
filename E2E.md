@@ -1,3 +1,22 @@
+## Awaited session-cache cleanup (#1244/#1277)
+
+Run `bun test src/__tests__/session-cache-clear-completion.test.ts` with a
+qualified SQLite runtime. The real native-writer control checks immediate
+memory reset, pending-owner retention, earlier/later FIFO publications and
+best-effort COMMIT failures. Two isolated negative controls remove the cache
+epoch fence or move reset after `await`; both must fail before source bytes
+are restored.
+
+For affected-flow evidence, extend all four E41 modes using
+`scripts/fixtures/session-cache-clear-gate.mjs`. After the existing live
+tool/history/cache assertions, pass the host's real public `clearSessionCache`,
+durable snapshot and supported SDK `getSessionMessages` helpers. The fresh
+turn uses the same installed client plugin and session key with a new human
+turn ID. Assert a completion promise, empty durable mappings, a distinct new
+SDK session and unchanged original history. Preserve the exact controller,
+versions, model identities and joined processes with the evidence. Use the
+independently installed package's exported function for the package arm.
+
 ## Antigravity completed-conversation idle window (#1341)
 
 Run `node scripts/e2e-antigravity-idle-conversation.mjs <server.js> <pi-integration.js> <pi-cli.js> <official-agy> <new-report.json> <label>`

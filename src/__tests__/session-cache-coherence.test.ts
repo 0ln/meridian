@@ -10,15 +10,15 @@ import { evictSharedSession, lookupSharedSession, lookupSharedSessionResult, set
 describe("cross-process session cache coherence", () => {
   let dir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "meridian-cache-coherence-"))
     setSessionStoreDir(dir, { skipLocking: false })
     setupStoreBackend(dir)
-    clearSessionCache()
+    await clearSessionCache()
   })
 
-  afterEach(() => {
-    clearSessionCache()
+  afterEach(async () => {
+    await clearSessionCache()
     teardownStoreBackend()
     setSessionStoreDir(null)
     rmSync(dir, { recursive: true, force: true })

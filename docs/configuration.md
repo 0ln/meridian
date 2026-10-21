@@ -1786,6 +1786,15 @@ await proxy.closeBackend?.()
 await handle?.close()
 ```
 
+The exported `clearSessionCache()` resets memory immediately and returns
+`Promise<void>` under the approved #1244/#1277 contract. Use
+`await clearSessionCache()` before relying on completed durable cleanup or
+closing its bookkeeping owner. SQL cleanup waits in the existing bounded
+writer queue; later publications survive. Cleanup retains its best-effort
+error policy, so fulfillment alone does not certify that an unavailable store
+was cleared. JSON remains the default and performs its cleanup synchronously
+before returning the promise.
+
 Keep the directory/backend fixed for the lifetime of these owners. Closing one
 proxy never closes another owner's connection. The returned handle is opaque:
 it exposes only idempotent `close(): Promise<void>`, with repeated calls joining

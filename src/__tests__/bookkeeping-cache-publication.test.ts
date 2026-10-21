@@ -21,7 +21,7 @@ const directoryHint = "/workspace"
 let directory: string, previousDirectory: string, handle: BookkeepingHandle
 let injection: ReturnType<typeof lifecycleCommitInjection>
 let transactionStatements: string[]
-beforeEach(() => {
+beforeEach(async () => {
   previousDirectory = getSessionStoreDir()
   directory = realpathSync(mkdtempSync(join(tmpdir(), "cache-publication-")))
   injection = lifecycleCommitInjection()
@@ -32,10 +32,10 @@ beforeEach(() => {
   } })
   setSessionStoreDir(directory)
   setSessionStoreBackendForTest(sqliteSessionStoreBackend)
-  clearSessionCache()
+  await clearSessionCache()
 })
-afterEach(() => {
-  clearSessionCache()
+afterEach(async () => {
+  await clearSessionCache()
   setSessionStoreBackendForTest(null)
   setSessionStoreDir(previousDirectory)
   handle.close()
@@ -160,10 +160,11 @@ describe("cache effects follow durable SQLite COMMIT", () => {
       })
     }
     for (const root of ["evict", "clear", "missing-lookup", "missing-claude-id"] as const) {
-      it(`${key ?? "fingerprint"}: ${root} invalidation rolls back`, () => {
+      it(`${key ?? "fingerprint"}: ${root} durable invalidation rolls back`, async () => {
         storeSession(key, messages, "old", directoryHint)
+        let completion: Promise<void> | undefined
         expect(withBookkeepingWrite(directory, { scope: "publication" }, () => {
-          if (root === "clear") clearSessionCache()
+          if (root === "clear") completion = clearSessionCache()
           else if (root === "missing-claude-id" || root === "missing-lookup") {
             clearSharedMapping(key)
             if (root === "missing-claude-id") expect(getSessionByClaudeId("old")).toBeUndefined()
@@ -172,15 +173,19 @@ describe("cache effects follow durable SQLite COMMIT", () => {
             .toEqual({ type: "diverged", reason: "not-found" })
           return false
         })).toBe(false)
-        expect(cachedId(key)).toBe("old")
+        await completion
+        // Approved #1244: clear resets memory immediately, even on rollback.
+        expect(cachedId(key)).toBe(root === "clear" ? undefined : "old")
+        expect(lookupSession(key, incoming, directoryHint).type).toBe("continuation")
       })
     }
     for (const root of ["evict", "clear"] as const) {
       for (const fault of [undefined, "busy-before", "ioerr-before", "ioerr-after"] as const) {
-        it(`${key ?? "fingerprint"}: ${root} × ${fault ?? "COMMIT"} publishes invalidation only on success`, () => {
+        it(`${key ?? "fingerprint"}: ${root} × ${fault ?? "COMMIT"} preserves durable outcome`, async () => {
           storeSession(key, messages, "old", directoryHint)
+          let completion: Promise<void> | undefined
           const operation = () => withBookkeepingWrite(directory, { scope: "publication" }, () => {
-            if (root === "clear") clearSessionCache()
+            if (root === "clear") completion = clearSessionCache()
             else expect(evictSession(key, directoryHint, messages)).toBe(true)
             return true
           })
@@ -188,7 +193,8 @@ describe("cache effects follow durable SQLite COMMIT", () => {
             injection.arm(fault)
             expect(operation).toThrow(fault === "busy-before" ? BookkeepingBusyError : BookkeepingCommitUncertainError)
           } else expect(operation()).toBe(true)
-          expect(cachedId(key)).toBe(fault ? "old" : undefined)
+          await completion
+          expect(cachedId(key)).toBe(root === "clear" ? undefined : fault ? "old" : undefined)
           const result = lookupSession(key, incoming, directoryHint)
           expect(result.type).toBe(!fault || fault === "ioerr-after" ? "diverged" : "continuation")
         })

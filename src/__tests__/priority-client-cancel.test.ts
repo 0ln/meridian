@@ -62,12 +62,12 @@ const { rateLimitStore } = await import("../proxy/rateLimitStore")
 const savedEnv: Record<string, string | undefined> = {}
 let root = ""
 
-beforeEach(() => {
+beforeEach(async () => {
   turns = []
   refusing = undefined
   root = realpathSync(mkdtempSync(join(tmpdir(), "meridian-priority-cancel-")))
   resetOAuthUsageCache()
-  clearSessionCache()
+  await clearSessionCache()
   resetActiveProfile()
   rateLimitStore.clear()
   __setFetchOAuthUsageOverride(async () => null)

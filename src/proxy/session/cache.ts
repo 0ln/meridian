@@ -26,6 +26,7 @@ import {
 import { activeStoreBackend } from "./bookkeeping/storeBackend"
 import { connectionFor } from "./bookkeeping/connection"
 import { withStoreRead, withStoreWrite } from "./bookkeeping/storeScope"
+import { withBookkeepingWriteAsync } from "./bookkeeping/transaction"
 import { getConversationFingerprint } from "./fingerprint"
 import {
   computeLineageHash,
@@ -106,6 +107,7 @@ function createFingerprintCache(maxSize: number) {
 let activeMaxSessions = getMaxSessionsLimit()
 let sessionCache = createSessionCache(activeMaxSessions)
 let fingerprintCache = createFingerprintCache(activeMaxSessions)
+let cacheEpoch = 0
 
 function isSessionStoreTransactionActive(): boolean {
   return !!activeStoreBackend() && connectionFor(getSessionStoreDir()).scope !== undefined
@@ -121,6 +123,13 @@ function afterSessionStoreCommit(effect: () => void): void {
   }
 }
 
+function afterSessionCacheCommit(effect: () => void): void {
+  const epoch = cacheEpoch
+  afterSessionStoreCommit(() => {
+    if (epoch === cacheEpoch) effect()
+  })
+}
+
 function lookupSharedSessionForCache(key: string): ReturnType<typeof lookupSharedSessionResult> {
   // Address the engine before the store's degraded-read catch. Its own read joins this
   // scope, so a foreign publication cannot turn into LRU authority.
@@ -129,27 +138,44 @@ function lookupSharedSessionForCache(key: string): ReturnType<typeof lookupShare
     : lookupSharedSessionResult(key)
 }
 
-/** Clear all session caches (used in tests).
- *  Re-reads MERIDIAN_MAX_SESSIONS / CLAUDE_PROXY_MAX_SESSIONS so tests can override the limit. */
-export function clearSessionCache() {
+/** Reset memory immediately; await ordered, best-effort durable cleanup before relying on its result.
+ * Re-reads MERIDIAN_MAX_SESSIONS / CLAUDE_PROXY_MAX_SESSIONS so tests can override the limit. */
+export async function clearSessionCache(): Promise<void> {
+  cacheEpoch++
   const configuredLimit = getMaxSessionsLimit()
   const clearMemory = () => {
-    if (configuredLimit !== activeMaxSessions) {
-      activeMaxSessions = configuredLimit
-      sessionCache = createSessionCache(activeMaxSessions)
-      fingerprintCache = createFingerprintCache(activeMaxSessions)
-    } else {
-      sessionCache.clear()
-      fingerprintCache.clear()
-    }
+    sessionCache.clear()
+    fingerprintCache.clear()
   }
-  if (!activeStoreBackend()) {
+  if (configuredLimit !== activeMaxSessions) {
+    activeMaxSessions = configuredLimit
+    sessionCache = createSessionCache(activeMaxSessions)
+    fingerprintCache = createFingerprintCache(activeMaxSessions)
+  } else {
     clearMemory()
-    try { clearSharedSessions() } catch { return }
-    return
   }
-  try { clearSharedSessions() } catch { return }
-  afterSessionStoreCommit(clearMemory)
+  try {
+    if (!activeStoreBackend()) {
+      clearSharedSessions()
+      return
+    }
+    const directory = getSessionStoreDir()
+    const clearDurable = () => {
+      clearSharedSessions()
+      // Earlier FIFO writers may have repopulated memory while admission waited.
+      // Clear at COMMIT, before any later publication; never in an await continuation.
+      withStoreWrite(directory, tx => { tx.afterCommit(clearMemory) })
+    }
+    if (isSessionStoreTransactionActive()) {
+      // Internal synchronous callers join their existing scope. Its COMMIT or
+      // rollback finishes before a consumer can observe this promise settling.
+      clearDurable()
+    } else {
+      await withBookkeepingWriteAsync(directory, { scope: "store" }, clearDurable)
+    }
+  } catch {
+    return // Preserve the exported cleanup's existing best-effort error policy.
+  }
 }
 
 /** Evict a stale session from all caches and the shared store.
@@ -173,7 +199,7 @@ export function evictSession(
     // Store failures are safety-significant: callers must not release a turn
     // after claiming cleanup succeeded while the durable mapping remains.
     const evicted = evictSharedSession(sessionId, expectedGeneration)
-    if (sql && evicted) afterSessionStoreCommit(invalidate)
+    if (sql && evicted) afterSessionCacheCommit(invalidate)
     // Header-keyed and fingerprint-keyed conversations are independent durable
     // keys. Never apply one key's generation token to the other key.
     return evicted
@@ -191,7 +217,7 @@ export function evictSession(
       const sql = !!activeStoreBackend()
       if (!sql) invalidate()
       const evicted = evictSharedSession(fp, expectedGeneration)
-      if (sql && evicted) afterSessionStoreCommit(invalidate)
+      if (sql && evicted) afterSessionCacheCommit(invalidate)
       return evicted
     }
   }
@@ -272,6 +298,8 @@ export function rollbackPrioritySessionPublication(
   afterSessionStoreCommit(() => {
     publication.expectedAssignmentGeneration = restored.assignmentGeneration
     publication.rollback = undefined
+  })
+  afterSessionCacheCommit(() => {
     if (sessionId) {
       if (restored.restoredMapping) sessionCache.set(sessionId, stateFromSharedSession(restored.restoredMapping))
       else sessionCache.delete(sessionId)
@@ -412,7 +440,7 @@ export function lookupSession(
       ? stateFromSharedSession(shared.session)
       : shared.status === "error" ? cached : undefined
     if (shared.status === "missing") {
-      afterSessionStoreCommit(() => {
+      afterSessionCacheCommit(() => {
         const stale = sessionCache.get(sessionId)
         sessionCache.delete(sessionId)
         if (stale) {
@@ -424,7 +452,7 @@ export function lookupSession(
     if (!state) return { type: "diverged", reason: "not-found" }
     const result = classifyLineage(state, messages, sessionId)
     if (result.type === "continuation" || result.type === "compaction") {
-      afterSessionStoreCommit(() => { sessionCache.set(sessionId, touchSession(state)) })
+      afterSessionCacheCommit(() => { sessionCache.set(sessionId, touchSession(state)) })
     }
     return result
   }
@@ -452,7 +480,7 @@ export function lookupSession(
       ? stateFromSharedSession(shared.session)
       : shared.status === "error" ? cached : undefined
     if (shared.status === "missing") {
-      afterSessionStoreCommit(() => {
+      afterSessionCacheCommit(() => {
         const stale = fingerprintCache.get(fp)
         fingerprintCache.delete(fp)
         if (stale) {
@@ -464,7 +492,7 @@ export function lookupSession(
     if (!state) return { type: "diverged", reason: "not-found" }
     const result = classifyLineage(state, messages, fp)
     if (result.type === "continuation" || result.type === "compaction") {
-      afterSessionStoreCommit(() => { fingerprintCache.set(fp, touchSession(state)) })
+      afterSessionCacheCommit(() => { fingerprintCache.set(fp, touchSession(state)) })
     }
     return result
   }
@@ -557,7 +585,7 @@ export function getSessionByClaudeId(claudeSessionId: string): SessionState | un
     throw new Error(`Shared session store is unavailable: ${shared.error.message}`)
   }
   if (shared.status === "missing") {
-    afterSessionStoreCommit(() => {
+    afterSessionCacheCommit(() => {
       removeSessionEntriesByClaudeSessionId(claudeSessionId)
       removeFingerprintEntriesByClaudeSessionId(claudeSessionId)
     })
@@ -684,7 +712,7 @@ export function storeSession(
   if (!storedGeneration) return false
 
   // The CAS may have joined an outer publication transaction.
-  afterSessionStoreCommit(() => {
+  afterSessionCacheCommit(() => {
     if (sessionId) sessionCache.set(sessionId, state)
     if (fp && !sessionId) fingerprintCache.set(fp, state)
   })

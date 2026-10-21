@@ -472,7 +472,14 @@ retains the guard and requires process restart before maintenance. Offline WAL
 TRUNCATE requires an exclusive maintenance connection and one local handle.
 A sole runtime handle still holds shared ownership and may only use PASSIVE.
 
-Standalone synchronous cache/store operations retain their signatures. Server
+Standalone cache/store operations remain synchronous except the owner-approved
+`clearSessionCache(): Promise<void>`. Clear resets both LRUs immediately and
+fences older cache commit hooks. SQL cleanup joins bounded FIFO admission; a
+second reset runs at its durable COMMIT before later publications, rather than
+in an await continuation that could erase them. Internal synchronous scopes
+join the existing transaction. Cleanup keeps its best-effort error policy;
+callers await it before relying on completed durable work. JSON cleanup still
+runs synchronously before returning its completion promise. Server
 mutation roots enter asynchronous admission around the complete operation;
 nested store writes join the same transaction. Lifecycle publication promotes
 the resource and publishes its mapping/pins/priority state in one COMMIT. Its
