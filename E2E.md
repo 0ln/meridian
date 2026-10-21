@@ -824,6 +824,25 @@ agy persistent resume, Linux and Windows are not established by these gates.
 
 ### Antigravity tool-result recovery and main integration
 
+The active-history regression has a separate, opt-in gate:
+
+```sh
+AGY_CLI_DISABLE_AUTO_UPDATE=true E2E_ALLOW_LIVE_MODEL=1 \
+E2E_MERIDIAN_ROOT="$PWD" E2E_PI_BIN=/absolute/path/to/pi/dist/bundle/cli.js \
+E2E_NODE_BIN=/absolute/path/to/node MERIDIAN_AGY_PATH=/absolute/path/to/antigravity \
+bun scripts/e2e-antigravity-active-history.mjs
+```
+
+Use Bun 1.4.3, Pi 1.1.0 and the official agy 1.2.7 Darwin arm64 binary.
+The gate requires the default subscription with paid credits/custom providers disabled,
+imports the retained public long-history fixture, and requires one exact write
+and a correlated read after joined backend replacement. The newest request,
+completed call/result and historical identities must survive translation within
+the unchanged 190,000-byte ceiling. It preserves bounded process/pipe and
+artifact-drain receipts. A failed attempt is retained and is not retried.
+This proves this active-history client path; it does not qualify the separate
+recap/replay-notice proposals or an unspecified reporter client/platform.
+
 ```sh
 npm run build
 node scripts/e2e-antigravity-recovery.mjs
