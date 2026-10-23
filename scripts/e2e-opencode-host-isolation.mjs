@@ -20,7 +20,7 @@ const repo = resolve(process.env.E2E_MERIDIAN_ROOT ?? '.')
 const client = process.env.E2E_OPENCODE_BIN, native = process.env.E2E_NATIVE_BIN
 const version = process.env.E2E_OPENCODE_VERSION ?? '2.0.31'
 assert(client?.startsWith('/') && native?.startsWith('/'))
-assert(['2.0.21', '2.0.31'].includes(version))
+assert(['2.0.21', '2.0.31', '2.1.3'].includes(version))
 const live = process.argv.includes('--live'), baseline = process.argv.includes('--expect-baseline')
 const output = resolve(process.env.E2E_EVIDENCE_DIR ?? 'local-evidence/opencode-host-isolation')
 const scrub = resolveOpenCodeScrub(process.env.E2E_PLUGIN_PATH, process.env.E2E_SCRUB_VERSION)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// OpenCode 2.0.16 -> installed Meridian V2 plugin -> real SDK/model.
+// Qualified OpenCode V2 -> installed Meridian V2 plugin -> real SDK/model.
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
@@ -8,9 +8,9 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const expectedClientVersion = process.env.E2E_OPENCODE_VERSION ?? '2.0.16'
-assert(['2.0.16','2.0.21','2.0.31'].includes(expectedClientVersion), 'Pin a qualified stable host')
+assert(['2.0.16','2.0.21','2.0.31','2.1.3'].includes(expectedClientVersion), 'Pin a qualified stable host')
 const client = process.env.E2E_OPENCODE_BIN
-assert(client, 'Set E2E_OPENCODE_BIN to the exact OpenCode 2.0.16 executable')
+assert(client, `Set E2E_OPENCODE_BIN to the exact OpenCode ${expectedClientVersion} executable`)
 const repo = resolve(process.env.E2E_MERIDIAN_ROOT ?? '.')
 const version = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).version
 if (process.env.E2E_EXPECT_MERIDIAN_VERSION) assert.equal(version, process.env.E2E_EXPECT_MERIDIAN_VERSION)
@@ -117,7 +117,7 @@ try {
   assert.equal(new TextDecoder().decode(versionRun.stdout).trim(), `opencode v${expectedClientVersion}`)
   const setup = Bun.spawnSync(['node', join(repo, 'dist', 'cli.js'), 'setup', '--v2', '--opencode-bin', client],
     { cwd: project, env: clientEnv })
-  assert.equal(setup.exitCode, 0, `Meridian setup rejected 2.0.16: ${new TextDecoder().decode(setup.stderr)}`)
+  assert.equal(setup.exitCode, 0, `Meridian setup rejected ${expectedClientVersion}: ${new TextDecoder().decode(setup.stderr)}`)
   const configured = JSON.parse(readFileSync(join(config, 'opencode.json'), 'utf8'))
   assert.deepEqual(configured.plugins.map(path => realpathSync(path)), [realpathSync(plugin)],
     'Setup did not install the packaged V2 plugin exactly once')
@@ -192,7 +192,7 @@ try {
       } catch (error) { if (server.exitCode !== null) throw error }
       await Bun.sleep(100)
     }
-    assert(ready, 'OpenCode 2.0.16 API server did not load the persisted session')
+    assert(ready, `OpenCode ${expectedClientVersion} API server did not load the persisted session`)
     const beforeGenerate = observed.length
     const generated = await fetch(`${base}/api/session/${primary.session}/generate`, {
       method: 'POST', headers, body: JSON.stringify({ prompt: `Explain the marker ${generateMarker} briefly.` }),
