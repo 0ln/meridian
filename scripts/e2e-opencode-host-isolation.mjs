@@ -29,7 +29,7 @@ if (live) {
   assert.equal(process.env.E2E_ALLOW_LIVE_MODEL, '1')
   const guardPath = process.env.E2E_USAGE_GUARD_FILE
   const guard = JSON.parse(readFileSync(guardPath, 'utf8'))
-  assert(guard.canInfer && guard.extraUsageEnabled === false && guard.refreshes === 0)
+  assert(guard.canInfer && guard.extraUsageEnabled === false && guard.refreshCalls === 0)
   assert(Date.now() - statSync(guardPath).mtimeMs < 300000, 'Fresh included-capacity guard required')
   assert.equal(statSync(process.env.E2E_LIVE_PROFILE_FILE).mode & 0o077, 0)
   profiles = JSON.parse(readFileSync(process.env.E2E_LIVE_PROFILE_FILE, 'utf8'))
